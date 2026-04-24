@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import type { OutputFormat } from '@/lib/crop'
+import { formatBytes, type OutputFormat } from '@/lib/crop'
 
 const FORMATS: { value: OutputFormat; label: string }[] = [
   { value: 'png', label: 'PNG' },
@@ -14,8 +14,10 @@ type ExportBarProps = {
   quality: number
   onQualityChange: (quality: number) => void
   output: { width: number; height: number } | null
+  sizeBytes: number | null
+  estimating: boolean
   onDownload: () => void
-  downloading: boolean
+  canDownload: boolean
 }
 
 export function ExportBar({
@@ -24,8 +26,10 @@ export function ExportBar({
   quality,
   onQualityChange,
   output,
+  sizeBytes,
+  estimating,
   onDownload,
-  downloading,
+  canDownload,
 }: ExportBarProps) {
   const showQuality = format !== 'png'
   return (
@@ -74,13 +78,18 @@ export function ExportBar({
       )}
 
       <div className="ml-auto flex items-center gap-3">
-        {output && (
-          <p className="text-xs text-muted-foreground">
-            Output: {output.width}×{output.height}
-          </p>
-        )}
-        <Button onClick={onDownload} disabled={downloading || !output}>
-          {downloading ? 'Preparing…' : 'Download'}
+        <div className="text-right">
+          {output && (
+            <p className="text-xs text-muted-foreground">
+              {output.width}×{output.height}
+              {sizeBytes != null && <> · {formatBytes(sizeBytes)}</>}
+              {estimating && sizeBytes == null && <> · …</>}
+            </p>
+          )}
+          <p className="text-[10px] text-muted-foreground">EXIF stripped</p>
+        </div>
+        <Button onClick={onDownload} disabled={!canDownload}>
+          Download
         </Button>
       </div>
     </div>

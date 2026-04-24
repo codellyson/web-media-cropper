@@ -1,3 +1,5 @@
+import Pica from 'pica'
+
 export type CropBox = {
   x: number
   y: number
@@ -33,6 +35,26 @@ export function centerCropBox(
   return { x: 0, y: (sourceHeight - height) / 2, width, height }
 }
 
+let picaInstance: ReturnType<typeof Pica> | null = null
+function pica() {
+  if (!picaInstance) picaInstance = Pica({ features: ['js', 'wasm'] })
+  return picaInstance
+}
+
+function mimeFor(format: OutputFormat): string {
+  return format === 'png' ? 'image/png' : format === 'jpeg' ? 'image/jpeg' : 'image/webp'
+}
+
+function toBlob(canvas: HTMLCanvasElement, mime: string, quality?: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error(`Failed to encode ${mime}`))),
+      mime,
+      quality,
+    )
+  })
+}
+
 export async function cropImage(
   source: ImageBitmap | HTMLImageElement,
   box: CropBox,
@@ -41,36 +63,43 @@ export async function cropImage(
 ): Promise<Blob> {
   const format = options.format ?? 'png'
   const quality = options.quality ?? 0.92
+  const mime = mimeFor(format)
 
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.round(output.width)
-  canvas.height = Math.round(output.height)
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Canvas 2D context unavailable')
+  const outW = Math.round(output.width)
+  const outH = Math.round(output.height)
+  const boxW = Math.round(box.width)
+  const boxH = Math.round(box.height)
+
+  const isDownscale = outW < boxW || outH < boxH
+
+  if (isDownscale) {
+    const intermediate = document.createElement('canvas')
+    intermediate.width = boxW
+    intermediate.height = boxH
+    const ictx = intermediate.getContext('2d')
+    if (!ictx) throw new Error('Canvas 2D unavailable')
+    ictx.drawImage(source, box.x, box.y, box.width, box.height, 0, 0, boxW, boxH)
+
+    const out = document.createElement('canvas')
+    out.width = outW
+    out.height = outH
+    await pica().resize(intermediate, out)
+    return toBlob(out, mime, format === 'png' ? undefined : quality)
+  }
+
+  const out = document.createElement('canvas')
+  out.width = outW
+  out.height = outH
+  const ctx = out.getContext('2d')
+  if (!ctx) throw new Error('Canvas 2D unavailable')
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(source, box.x, box.y, box.width, box.height, 0, 0, outW, outH)
+  return toBlob(out, mime, format === 'png' ? undefined : quality)
+}
 
-  ctx.drawImage(
-    source,
-    box.x,
-    box.y,
-    box.width,
-    box.height,
-    0,
-    0,
-    canvas.width,
-    canvas.height,
-  )
-
-  const mime = format === 'png' ? 'image/png' : format === 'jpeg' ? 'image/jpeg' : 'image/webp'
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (blob) resolve(blob)
-        else reject(new Error(`Failed to encode ${mime}`))
-      },
-      mime,
-      format === 'png' ? undefined : quality,
-    )
-  })
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} kB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }

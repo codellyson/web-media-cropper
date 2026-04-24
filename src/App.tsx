@@ -6,10 +6,11 @@ import { CustomSizeInput } from '@/components/CustomSizeInput'
 import { ExportBar } from '@/components/ExportBar'
 import { Button } from '@/components/ui/button'
 import { useImageSource } from '@/hooks/useImageSource'
-import { cropImage, type CropBox, type OutputFormat } from '@/lib/crop'
+import { type CropBox, type OutputFormat } from '@/lib/crop'
 import { downloadBlob, swapExtension } from '@/lib/download'
 import { PRESETS, type Preset } from '@/lib/presets'
 import { computeFocalPoint, type FocalPoint } from '@/lib/smartCrop'
+import { useCroppedBlob } from '@/hooks/useCroppedBlob'
 
 const DEFAULT_PRESET = PRESETS.find((p) => p.id === 'yt-thumbnail')!
 
@@ -19,7 +20,6 @@ export default function App() {
   const [custom, setCustom] = useState<{ width: number; height: number } | null>(null)
   const [format, setFormat] = useState<OutputFormat>('png')
   const [quality, setQuality] = useState(0.92)
-  const [downloading, setDownloading] = useState(false)
   const [focalPoint, setFocalPoint] = useState<FocalPoint | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [cropBox, setCropBox] = useState<CropBox | null>(null)
@@ -67,20 +67,22 @@ export default function App() {
     setPresetId(null)
   }
 
-  const handleDownload = async () => {
-    if (state.status !== 'ready' || !cropBox || !target) return
-    setDownloading(true)
-    try {
-      const blob = await cropImage(state.image.bitmap, cropBox, target, { format, quality })
-      const ext = format === 'jpeg' ? 'jpg' : format
-      const base = swapExtension(state.image.name, ext).replace(
-        `.${ext}`,
-        `-${target.width}x${target.height}.${ext}`,
-      )
-      downloadBlob(blob, base)
-    } finally {
-      setDownloading(false)
-    }
+  const croppedBlob = useCroppedBlob({
+    bitmap: state.status === 'ready' ? state.image.bitmap : null,
+    box: cropBox,
+    output: target,
+    format,
+    quality,
+  })
+
+  const handleDownload = () => {
+    if (!croppedBlob.blob || !target || state.status !== 'ready') return
+    const ext = format === 'jpeg' ? 'jpg' : format
+    const base = swapExtension(state.image.name, ext).replace(
+      `.${ext}`,
+      `-${target.width}x${target.height}.${ext}`,
+    )
+    downloadBlob(croppedBlob.blob, base)
   }
 
   return (
@@ -152,8 +154,10 @@ export default function App() {
                 quality={quality}
                 onQualityChange={setQuality}
                 output={target}
+                sizeBytes={croppedBlob.blob?.size ?? null}
+                estimating={croppedBlob.loading}
                 onDownload={handleDownload}
-                downloading={downloading}
+                canDownload={!!croppedBlob.blob}
               />
             </section>
           </div>
