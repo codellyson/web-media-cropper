@@ -7,8 +7,9 @@ import { renderLandingHtml } from './landing-template'
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const DIST = path.join(ROOT, 'dist')
 
-const RAW_SITE_URL = process.env.SITE_URL?.trim() ?? ''
-const SITE_URL = RAW_SITE_URL ? RAW_SITE_URL.replace(/\/+$/, '') : null
+const DEFAULT_SITE_URL = 'https://cropper.kreativekorna.com'
+const RAW_SITE_URL = process.env.SITE_URL?.trim() || DEFAULT_SITE_URL
+const SITE_URL = RAW_SITE_URL.replace(/\/+$/, '')
 
 async function ensureDist() {
   try {
@@ -50,12 +51,7 @@ async function main() {
     return
   }
 
-  if (!SITE_URL) {
-    console.warn(
-      '[gen-landings] SITE_URL env var not set — canonical and og:url will be relative paths. ' +
-        'Set SITE_URL=https://your.domain at build time for production.',
-    )
-  }
+  console.log(`[gen-landings] using SITE_URL=${SITE_URL}`)
 
   for (const landing of LANDINGS) {
     const html = renderLandingHtml(landing, SITE_URL)

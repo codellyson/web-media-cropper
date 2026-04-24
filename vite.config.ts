@@ -12,8 +12,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'web-media-cropper',
-        short_name: 'cropper',
+        name: 'Cropper',
+        short_name: 'Cropper',
         description:
           'Crop any image to any platform size, right in your browser. Nothing uploaded.',
         theme_color: '#0a0a0a',

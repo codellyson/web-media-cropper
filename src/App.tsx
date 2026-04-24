@@ -116,7 +116,7 @@ export default function App() {
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
       <header className="border-b">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <h1 className="text-sm font-medium tracking-tight">web-media-cropper</h1>
+          <h1 className="text-sm font-medium tracking-tight">Cropper</h1>
           <div className="flex items-center gap-3">
             <span className="hidden text-xs text-muted-foreground sm:inline">
               100% in your browser — no upload
@@ -199,7 +199,7 @@ export default function App() {
       <footer className="border-t">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-4 text-xs text-muted-foreground">
           <span>Runs entirely in your browser. No upload, no tracking.</span>
-          <span>web-media-cropper</span>
+          <span>Cropper</span>
         </div>
       </footer>
     </div>

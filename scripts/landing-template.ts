@@ -163,7 +163,7 @@ ${jsonLdBlock}
 <body>
 <header>
   <div class="container">
-    <a href="/">web-media-cropper</a>
+    <a href="/">Cropper</a>
     <span class="hint">100% in your browser — no upload</span>
   </div>
 </header>
