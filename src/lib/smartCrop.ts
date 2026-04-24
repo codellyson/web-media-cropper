@@ -1,4 +1,4 @@
-import { FaceDetector, FilesetResolver } from '@mediapipe/tasks-vision'
+import type { FaceDetector } from '@mediapipe/tasks-vision'
 
 export type FocalPoint = { x: number; y: number } // normalized 0..1 in source image space
 
@@ -11,8 +11,9 @@ let detectorPromise: Promise<FaceDetector> | null = null
 function getDetector(): Promise<FaceDetector> {
   if (!detectorPromise) {
     detectorPromise = (async () => {
-      const vision = await FilesetResolver.forVisionTasks(WASM_BASE)
-      return FaceDetector.createFromOptions(vision, {
+      const mp = await import('@mediapipe/tasks-vision')
+      const vision = await mp.FilesetResolver.forVisionTasks(WASM_BASE)
+      return mp.FaceDetector.createFromOptions(vision, {
         baseOptions: { modelAssetPath: FACE_MODEL },
         runningMode: 'IMAGE',
       })

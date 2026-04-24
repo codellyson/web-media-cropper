@@ -11,6 +11,8 @@ import { downloadBlob, swapExtension } from '@/lib/download'
 import { PRESETS, type Preset } from '@/lib/presets'
 import { computeFocalPoint, type FocalPoint } from '@/lib/smartCrop'
 import { useCroppedBlob } from '@/hooks/useCroppedBlob'
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
+import { ThemeToggle } from '@/components/ThemeToggle'
 
 const DEFAULT_PRESET = PRESETS.find((p) => p.id === 'yt-thumbnail')!
 
@@ -85,14 +87,22 @@ export default function App() {
     downloadBlob(croppedBlob.blob, base)
   }
 
+  useKeyboardShortcuts({
+    onDownload: state.status === 'ready' ? handleDownload : undefined,
+    onClear: state.status === 'ready' ? reset : undefined,
+  })
+
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <header className="border-b">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
           <h1 className="text-sm font-medium tracking-tight">web-media-cropper</h1>
-          <span className="text-xs text-muted-foreground">
-            100% in your browser — no upload
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="hidden text-xs text-muted-foreground sm:inline">
+              100% in your browser — no upload
+            </span>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 

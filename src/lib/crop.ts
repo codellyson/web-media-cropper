@@ -37,7 +37,8 @@ export function centerCropBox(
 
 let picaInstance: ReturnType<typeof Pica> | null = null
 function pica() {
-  if (!picaInstance) picaInstance = Pica({ features: ['js', 'wasm'] })
+  // Default features include web workers + wasm — keeps heavy resampling off the main thread.
+  if (!picaInstance) picaInstance = Pica()
   return picaInstance
 }
 
