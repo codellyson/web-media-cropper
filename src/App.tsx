@@ -1,14 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Dropzone } from '@/components/Dropzone'
-import { CropPreview } from '@/components/CropPreview'
+import { CropStage } from '@/components/CropStage'
 import { PresetPicker } from '@/components/PresetPicker'
 import { CustomSizeInput } from '@/components/CustomSizeInput'
 import { ExportBar } from '@/components/ExportBar'
 import { Button } from '@/components/ui/button'
 import { useImageSource } from '@/hooks/useImageSource'
-import { centerCropBox, cropImage, type OutputFormat } from '@/lib/crop'
+import { cropImage, type CropBox, type OutputFormat } from '@/lib/crop'
 import { downloadBlob, swapExtension } from '@/lib/download'
 import { PRESETS, type Preset } from '@/lib/presets'
+import { computeFocalPoint, type FocalPoint } from '@/lib/smartCrop'
 
 const DEFAULT_PRESET = PRESETS.find((p) => p.id === 'yt-thumbnail')!
 
@@ -19,6 +20,9 @@ export default function App() {
   const [format, setFormat] = useState<OutputFormat>('png')
   const [quality, setQuality] = useState(0.92)
   const [downloading, setDownloading] = useState(false)
+  const [focalPoint, setFocalPoint] = useState<FocalPoint | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [cropBox, setCropBox] = useState<CropBox | null>(null)
 
   const target = useMemo(() => {
     if (custom) return custom
@@ -27,12 +31,31 @@ export default function App() {
     return null
   }, [custom, presetId])
 
-  const cropBox = useMemo(() => {
-    if (state.status !== 'ready' || !target) return null
-    return centerCropBox(state.image.width, state.image.height, target.width / target.height)
-  }, [state, target])
+  const aspect = target ? target.width / target.height : 16 / 9
 
-  const chooseFormat = (next: OutputFormat) => setFormat(next)
+  useEffect(() => {
+    if (state.status !== 'ready') {
+      setFocalPoint(null)
+      setCropBox(null)
+      return
+    }
+    let cancelled = false
+    setAnalyzing(true)
+    setFocalPoint(null)
+    computeFocalPoint(state.image.bitmap)
+      .then((fp) => {
+        if (!cancelled) setFocalPoint(fp)
+      })
+      .catch(() => {
+        if (!cancelled) setFocalPoint({ x: 0.5, y: 0.5 })
+      })
+      .finally(() => {
+        if (!cancelled) setAnalyzing(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [state])
 
   const handlePreset = (preset: Preset) => {
     setPresetId(preset.id)
@@ -50,8 +73,10 @@ export default function App() {
     try {
       const blob = await cropImage(state.image.bitmap, cropBox, target, { format, quality })
       const ext = format === 'jpeg' ? 'jpg' : format
-      const suffix = `-${target.width}x${target.height}`
-      const base = swapExtension(state.image.name, ext).replace(`.${ext}`, `${suffix}.${ext}`)
+      const base = swapExtension(state.image.name, ext).replace(
+        `.${ext}`,
+        `-${target.width}x${target.height}.${ext}`,
+      )
       downloadBlob(blob, base)
     } finally {
       setDownloading(false)
@@ -96,6 +121,7 @@ export default function App() {
                   <p className="truncate text-sm font-medium">{state.image.name}</p>
                   <p className="text-xs text-muted-foreground">
                     {state.image.width} × {state.image.height}
+                    {analyzing && <span> · analyzing…</span>}
                   </p>
                 </div>
                 <Button variant="ghost" size="sm" onClick={reset}>
@@ -103,20 +129,26 @@ export default function App() {
                 </Button>
               </div>
 
-              <div className="flex min-h-[300px] items-center justify-center rounded-lg border bg-muted/20 p-4">
-                {cropBox && (
-                  <CropPreview
-                    bitmap={state.image.bitmap}
-                    box={cropBox}
-                    maxWidth={720}
-                    maxHeight={440}
+              <div className="relative h-[440px] overflow-hidden rounded-lg border bg-muted/20">
+                {focalPoint ? (
+                  <CropStage
+                    imageUrl={state.objectUrl}
+                    sourceWidth={state.image.width}
+                    sourceHeight={state.image.height}
+                    aspect={aspect}
+                    focalPoint={focalPoint}
+                    onChange={setCropBox}
                   />
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <p className="text-sm text-muted-foreground">Analyzing subject…</p>
+                  </div>
                 )}
               </div>
 
               <ExportBar
                 format={format}
-                onFormatChange={chooseFormat}
+                onFormatChange={setFormat}
                 quality={quality}
                 onQualityChange={setQuality}
                 output={target}

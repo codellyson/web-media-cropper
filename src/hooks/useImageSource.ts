@@ -4,58 +4,61 @@ import { loadImageFromBlob, loadImageFromFile, type LoadedImage } from '@/lib/lo
 type State =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'ready'; image: LoadedImage }
+  | { status: 'ready'; image: LoadedImage; objectUrl: string }
   | { status: 'error'; message: string }
+
+type Refs = {
+  image: LoadedImage
+  objectUrl: string
+}
 
 export function useImageSource() {
   const [state, setState] = useState<State>({ status: 'idle' })
-  const lastImageRef = useRef<LoadedImage | null>(null)
+  const lastRef = useRef<Refs | null>(null)
 
-  useEffect(() => {
-    return () => {
-      lastImageRef.current?.bitmap.close?.()
+  const cleanup = useCallback(() => {
+    if (lastRef.current) {
+      lastRef.current.image.bitmap.close?.()
+      URL.revokeObjectURL(lastRef.current.objectUrl)
+      lastRef.current = null
     }
   }, [])
 
-  const loadFile = useCallback(async (file: File) => {
-    if (!file.type.startsWith('image/') && !/\.(heic|heif|avif|webp|png|jpe?g|gif)$/i.test(file.name)) {
-      setState({ status: 'error', message: `Unsupported file: ${file.type || file.name}` })
-      return
-    }
-    setState({ status: 'loading' })
-    try {
-      const image = await loadImageFromFile(file)
-      lastImageRef.current?.bitmap.close?.()
-      lastImageRef.current = image
-      setState({ status: 'ready', image })
-    } catch (err) {
-      setState({
-        status: 'error',
-        message: err instanceof Error ? err.message : 'Failed to load image',
-      })
-    }
-  }, [])
+  useEffect(() => cleanup, [cleanup])
 
-  const loadBlob = useCallback(async (blob: Blob, name = 'pasted-image') => {
-    setState({ status: 'loading' })
-    try {
-      const image = await loadImageFromBlob(blob, name)
-      lastImageRef.current?.bitmap.close?.()
-      lastImageRef.current = image
-      setState({ status: 'ready', image })
-    } catch (err) {
-      setState({
-        status: 'error',
-        message: err instanceof Error ? err.message : 'Failed to load image',
-      })
-    }
-  }, [])
+  const receive = useCallback(
+    async (blob: Blob, name: string) => {
+      if (!blob.type.startsWith('image/') && !/\.(heic|heif|avif|webp|png|jpe?g|gif)$/i.test(name)) {
+        setState({ status: 'error', message: `Unsupported file: ${blob.type || name}` })
+        return
+      }
+      setState({ status: 'loading' })
+      try {
+        const image =
+          blob instanceof File ? await loadImageFromFile(blob) : await loadImageFromBlob(blob, name)
+        const objectUrl = URL.createObjectURL(blob)
+        cleanup()
+        lastRef.current = { image, objectUrl }
+        setState({ status: 'ready', image, objectUrl })
+      } catch (err) {
+        setState({
+          status: 'error',
+          message: err instanceof Error ? err.message : 'Failed to load image',
+        })
+      }
+    },
+    [cleanup],
+  )
 
+  const loadFile = useCallback((file: File) => receive(file, file.name), [receive])
+  const loadBlob = useCallback(
+    (blob: Blob, name = 'pasted-image') => receive(blob, name),
+    [receive],
+  )
   const reset = useCallback(() => {
-    lastImageRef.current?.bitmap.close?.()
-    lastImageRef.current = null
+    cleanup()
     setState({ status: 'idle' })
-  }, [])
+  }, [cleanup])
 
   return { state, loadFile, loadBlob, reset }
 }
