@@ -9,6 +9,7 @@ type CropStageProps = {
   sourceHeight: number
   aspect: number
   focalPoint: FocalPoint
+  resetSeq?: number
   onChange: (box: CropBox) => void
 }
 
@@ -18,6 +19,7 @@ export function CropStage({
   sourceHeight,
   aspect,
   focalPoint,
+  resetSeq = 0,
   onChange,
 }: CropStageProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 })
@@ -40,7 +42,7 @@ export function CropStage({
     [onChange],
   )
 
-  const key = `${aspect}-${focalPoint.x.toFixed(3)}-${focalPoint.y.toFixed(3)}`
+  const key = `${resetSeq}-${aspect}-${focalPoint.x.toFixed(3)}-${focalPoint.y.toFixed(3)}`
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-lg bg-black/80">
@@ -54,7 +56,7 @@ export function CropStage({
         onZoomChange={setZoom}
         onCropComplete={handleComplete}
         initialCroppedAreaPixels={initialCroppedAreaPixels}
-        showGrid
+        showGrid={false}
         restrictPosition
         objectFit="contain"
       />

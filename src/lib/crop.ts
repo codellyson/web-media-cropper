@@ -12,7 +12,7 @@ export type OutputSize = {
   height: number
 }
 
-export type OutputFormat = 'png' | 'jpeg' | 'webp'
+export type OutputFormat = 'png' | 'jpeg' | 'webp' | 'avif'
 
 export type CropOptions = {
   format?: OutputFormat
@@ -43,7 +43,27 @@ function pica() {
 }
 
 function mimeFor(format: OutputFormat): string {
-  return format === 'png' ? 'image/png' : format === 'jpeg' ? 'image/jpeg' : 'image/webp'
+  if (format === 'png') return 'image/png'
+  if (format === 'jpeg') return 'image/jpeg'
+  if (format === 'avif') return 'image/avif'
+  return 'image/webp'
+}
+
+let avifSupportPromise: Promise<boolean> | null = null
+export function avifEncodeSupported(): Promise<boolean> {
+  if (!avifSupportPromise) {
+    avifSupportPromise = new Promise<boolean>((resolve) => {
+      try {
+        const c = document.createElement('canvas')
+        c.width = 1
+        c.height = 1
+        c.toBlob((b) => resolve(!!b && b.type === 'image/avif'), 'image/avif')
+      } catch {
+        resolve(false)
+      }
+    })
+  }
+  return avifSupportPromise
 }
 
 function toBlob(canvas: HTMLCanvasElement, mime: string, quality?: number): Promise<Blob> {
@@ -54,6 +74,31 @@ function toBlob(canvas: HTMLCanvasElement, mime: string, quality?: number): Prom
       quality,
     )
   })
+}
+
+export async function cropImageFromBlob(
+  blob: Blob,
+  box: CropBox,
+  output: OutputSize,
+  options: CropOptions = {},
+): Promise<Blob> {
+  const sx = Math.max(0, Math.round(box.x))
+  const sy = Math.max(0, Math.round(box.y))
+  const sw = Math.max(1, Math.round(box.width))
+  const sh = Math.max(1, Math.round(box.height))
+  const region = await createImageBitmap(blob, sx, sy, sw, sh, {
+    imageOrientation: 'from-image',
+  })
+  try {
+    return await cropImage(
+      region,
+      { x: 0, y: 0, width: region.width, height: region.height },
+      output,
+      options,
+    )
+  } finally {
+    region.close?.()
+  }
 }
 
 export async function cropImage(

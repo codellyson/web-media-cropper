@@ -5,6 +5,22 @@
 
 :root {
   --radius: 0.625rem;
+  --ic-bg: #fafaf7;
+  --ic-bg-2: #f3f2ee;
+  --ic-bg-3: #e9e7e0;
+  --ic-ink: #0a0a0a;
+  --ic-ink-2: #404040;
+  --ic-ink-3: #737373;
+  --ic-ink-4: #a3a3a3;
+  --ic-line: rgba(0, 0, 0, 0.08);
+  --ic-line-strong: rgba(0, 0, 0, 0.14);
+  --ic-card: #ffffff;
+  --ic-accent: #2563eb;
+  --ic-accent-glow: rgba(37, 99, 235, 0.18);
+  --ic-accent-tint: rgba(37, 99, 235, 0.08);
+  --ic-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.02);
+  --ic-shadow-lg: 0 30px 60px -20px rgba(0, 0, 0, 0.18), 0 10px 20px -10px rgba(0, 0, 0, 0.08);
+  --ic-shadow-xl: 0 50px 100px -30px rgba(0, 0, 0, 0.22), 0 20px 40px -20px rgba(0, 0, 0, 0.1);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -26,6 +42,22 @@
 }
 
 .dark {
+  --ic-bg: #0a0a0a;
+  --ic-bg-2: #141414;
+  --ic-bg-3: #1c1c1c;
+  --ic-ink: #fafafa;
+  --ic-ink-2: #d4d4d4;
+  --ic-ink-3: #a3a3a3;
+  --ic-ink-4: #737373;
+  --ic-line: rgba(255, 255, 255, 0.08);
+  --ic-line-strong: rgba(255, 255, 255, 0.14);
+  --ic-card: #141414;
+  --ic-accent: #3b82f6;
+  --ic-accent-glow: rgba(59, 130, 246, 0.25);
+  --ic-accent-tint: rgba(59, 130, 246, 0.12);
+  --ic-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --ic-shadow-lg: 0 30px 60px -20px rgba(0, 0, 0, 0.6);
+  --ic-shadow-xl: 0 50px 100px -30px rgba(0, 0, 0, 0.8);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -82,5 +114,92 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+    font-family:
+      'Geist', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer utilities {
+  .font-mono-geist {
+    font-family: 'Geist Mono', ui-monospace, monospace;
+  }
+}
+
+@keyframes ic-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes ic-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes ic-dash-flow {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+@keyframes ic-pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+@keyframes ic-tracker-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.3) inset,
+      0 0 0 1px rgba(0, 0, 0, 0.3),
+      0 0 16px var(--ic-accent-glow);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.3) inset,
+      0 0 0 1px rgba(0, 0, 0, 0.3),
+      0 0 28px var(--ic-accent-glow);
+  }
+}
+@keyframes ic-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* Hide react-easy-crop's default border/shadow so our corner brackets own the look. */
+.reactEasyCrop_CropArea {
+  border: 0 !important;
+  box-shadow: none !important;
+  color: transparent !important;
+}
+
+@keyframes ic-float-grad {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(2%, -1%) scale(1.05);
+  }
+}
+@keyframes ic-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
   }
 }

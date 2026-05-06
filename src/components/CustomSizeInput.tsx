@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
 import { parseDimensions } from '@/lib/parseDimensions'
 
 type CustomSizeInputProps = {
@@ -40,50 +38,63 @@ export function CustomSizeInput({ onApply }: CustomSizeInputProps) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       <div>
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Paste dimensions
+        <label
+          htmlFor="custom-dims-input"
+          className="mb-1.5 block px-2.5 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[var(--ic-ink-4)]"
+        >
+          Custom dimensions
         </label>
         <form
           onSubmit={(e) => {
             e.preventDefault()
             apply(raw)
           }}
-          className="flex gap-2"
+          className="flex gap-1.5 px-0.5"
         >
-          <Input
+          <input
+            id="custom-dims-input"
+            type="text"
             value={raw}
             onChange={(e) => setRaw(e.target.value)}
-            placeholder="1080×1350, 4:5 at 1080 wide, 1600 900…"
+            placeholder="1080×1350 or 4:5"
             autoComplete="off"
             spellCheck={false}
+            className="min-w-0 flex-1 rounded-md border border-[var(--ic-line)] bg-[var(--ic-card)] px-2.5 py-1.5 text-[13px] text-[var(--ic-ink)] outline-none transition placeholder:text-[var(--ic-ink-4)] focus:border-[var(--ic-ink-4)]"
           />
-          <Button type="submit" disabled={!parsed}>
+          <button
+            type="submit"
+            disabled={!parsed}
+            className="inline-flex h-8 items-center rounded-md bg-[var(--ic-ink)] px-3 text-[12.5px] font-medium text-[var(--ic-bg)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-30"
+          >
             Apply
-          </Button>
+          </button>
         </form>
-        <p className="mt-1.5 h-4 text-xs text-muted-foreground">
-          {parsed ? `→ ${parsed.width} × ${parsed.height}` : raw ? 'Enter two numbers or a ratio.' : ' '}
+        <p className="mt-1.5 h-4 px-2.5 font-mono-geist text-[10.5px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)]">
+          {parsed
+            ? `${parsed.width} × ${parsed.height}`
+            : raw
+              ? 'enter two numbers or a ratio'
+              : ''}
         </p>
       </div>
 
       {recent.length > 0 && (
         <div>
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <p className="mb-1.5 px-2.5 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[var(--ic-ink-4)]">
             Recent
           </p>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1 px-0.5">
             {recent.map((r) => (
-              <Button
+              <button
                 key={r}
-                variant="outline"
-                size="sm"
+                type="button"
                 onClick={() => apply(r)}
-                className="font-normal"
+                className="inline-flex h-7 items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] px-2.5 font-mono-geist text-[11px] tracking-[0.04em] text-[var(--ic-ink-2)] transition hover:border-[var(--ic-ink-4)] hover:text-[var(--ic-ink)]"
               >
                 {r}
-              </Button>
+              </button>
             ))}
           </div>
         </div>

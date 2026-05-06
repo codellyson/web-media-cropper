@@ -5,30 +5,45 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0a0a0a" />
-    <meta
-      name="description"
-      content="Crop any image to any platform size, right in your browser. Smart face-aware crop, paste your own dimensions. Nothing uploaded."
-    />
-    <link rel="canonical" href="https://cropper.kreativekorna.com/" />
 
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://cropper.kreativekorna.com/" />
-    <meta property="og:title" content="Cropper — crop images for any platform, in your browser" />
-    <meta
-      property="og:description"
-      content="Drop an image, click a preset, download. Smart face-aware crop. Nothing uploaded."
-    />
-    <meta property="og:image" content="/og.png" />
+    <script>
+      // Apply persisted theme before paint to prevent FOUC.
+      // Mirrors src/hooks/useTheme.ts — keep STORAGE_KEY in sync.
+      (function () {
+        try {
+          var t = localStorage.getItem('wmc:theme')
+          if (t !== 'light' && t !== 'dark') {
+            t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+          }
+          if (t === 'dark') document.documentElement.classList.add('dark')
+        } catch (e) {}
+      })()
+    </script>
 
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Cropper" />
-    <meta
-      name="twitter:description"
-      content="Drop an image, click a preset, download. Smart face-aware crop. Nothing uploaded."
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
     />
-    <meta name="twitter:image" content="/og.png" />
-
-    <title>Cropper — crop images for any platform, in your browser</title>
+    <script>
+      (function () {
+        var d = '%VITE_PLAUSIBLE_DOMAIN%'
+        if (!d || d.charAt(0) === '%') return
+        var s = document.createElement('script')
+        s.defer = true
+        s.setAttribute('data-domain', d)
+        s.src = 'https://plausible.io/js/script.js'
+        document.head.appendChild(s)
+        window.plausible =
+          window.plausible ||
+          function () {
+            ;(window.plausible.q = window.plausible.q || []).push(arguments)
+          }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

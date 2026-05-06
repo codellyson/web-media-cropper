@@ -1,7 +1,7 @@
 type EventPayload = Record<string, string | number | boolean>
 
-// No-op by default. To enable Plausible, set VITE_PLAUSIBLE_DOMAIN and ship
-// the script via index.html, then wire the global `plausible` call below.
+// Plausible is loaded by index.html when VITE_PLAUSIBLE_DOMAIN is set at build time.
+// In dev or when no domain is configured, this is a no-op.
 export function track(event: string, payload?: EventPayload) {
   if (import.meta.env.DEV) return
   const plausible = (window as typeof window & { plausible?: (e: string, o?: { props?: EventPayload }) => void })

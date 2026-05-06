@@ -27,7 +27,9 @@ function getDetector(): Promise<FaceDetector> {
 
 type Rect = { x: number; y: number; w: number; h: number }
 
-async function detectFaces(bitmap: ImageBitmap): Promise<Rect[]> {
+type DetectedFace = Rect & { score: number }
+
+async function detectFaces(bitmap: ImageBitmap): Promise<DetectedFace[]> {
   try {
     const MAX = 1024
     const scale = Math.min(1, MAX / Math.max(bitmap.width, bitmap.height))
@@ -45,14 +47,16 @@ async function detectFaces(bitmap: ImageBitmap): Promise<Rect[]> {
       .map((d) => {
         const bb = d.boundingBox
         if (!bb) return null
+        const score = d.categories?.[0]?.score ?? 1
         return {
           x: bb.originX / scale,
           y: bb.originY / scale,
           w: bb.width / scale,
           h: bb.height / scale,
+          score,
         }
       })
-      .filter((r): r is Rect => r !== null)
+      .filter((r): r is DetectedFace => r !== null)
   } catch (err) {
     console.warn('[smartCrop] face detection failed, falling back', err)
     return []
@@ -105,20 +109,48 @@ function varianceFocalPoint(bitmap: ImageBitmap): FocalPoint {
   return { x: bestX, y: bestY }
 }
 
-export async function computeFocalPoint(bitmap: ImageBitmap): Promise<FocalPoint> {
+export type FocalDetection = {
+  point: FocalPoint
+  source: 'face' | 'variance'
+  confidence: number
+  bbox?: { x: number; y: number; w: number; h: number }
+}
+
+export async function computeFocalDetection(bitmap: ImageBitmap): Promise<FocalDetection> {
   const faces = await detectFaces(bitmap)
   if (faces.length > 0) {
     const minX = Math.min(...faces.map((f) => f.x))
     const minY = Math.min(...faces.map((f) => f.y))
     const maxX = Math.max(...faces.map((f) => f.x + f.w))
     const maxY = Math.max(...faces.map((f) => f.y + f.h))
+    const score = Math.max(...faces.map((f) => f.score))
     return {
-      x: ((minX + maxX) / 2) / bitmap.width,
-      y: ((minY + maxY) / 2) / bitmap.height,
+      point: {
+        x: ((minX + maxX) / 2) / bitmap.width,
+        y: ((minY + maxY) / 2) / bitmap.height,
+      },
+      source: 'face',
+      confidence: score,
+      bbox: {
+        x: minX / bitmap.width,
+        y: minY / bitmap.height,
+        w: (maxX - minX) / bitmap.width,
+        h: (maxY - minY) / bitmap.height,
+      },
     }
   }
-  return varianceFocalPoint(bitmap)
+  return {
+    point: varianceFocalPoint(bitmap),
+    source: 'variance',
+    confidence: 0.5,
+  }
 }
+
+export async function computeFocalPoint(bitmap: ImageBitmap): Promise<FocalPoint> {
+  const det = await computeFocalDetection(bitmap)
+  return det.point
+}
+
 
 export function cropBoxFromFocalPoint(
   sourceW: number,

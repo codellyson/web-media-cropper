@@ -1,8 +1,10 @@
 import path from 'node:path'
 import { defineConfig } from 'vite'
+// vite-react-ssg adds `ssgOptions` to UserConfig; types don't expose it from vite directly.
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import { LANDINGS } from './src/content/landings'
 
 export default defineConfig({
   plugins: [
@@ -36,6 +38,15 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+    },
+    dedupe: ['react', 'react-dom'],
+  },
+  // @ts-expect-error — `ssgOptions` is augmented onto UserConfig by vite-react-ssg
+  ssgOptions: {
+    script: 'async',
+    formatting: 'minify',
+    includedRoutes() {
+      return ['/', ...LANDINGS.map((l) => `/${l.slug}`)]
     },
   },
 })

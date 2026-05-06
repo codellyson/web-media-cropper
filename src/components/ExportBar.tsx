@@ -38,14 +38,16 @@ export function ExportBar({
         <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Format
         </p>
-        <div className="inline-flex rounded-md border p-0.5">
+        <div role="radiogroup" aria-label="Output format" className="inline-flex rounded-md border p-0.5">
           {FORMATS.map((f) => (
             <button
               key={f.value}
               type="button"
+              role="radio"
+              aria-checked={format === f.value}
               onClick={() => onFormatChange(f.value)}
               className={cn(
-                'rounded-[3px] px-2.5 py-1 text-xs font-medium transition-colors',
+                'rounded-[3px] px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 format === f.value
                   ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:text-foreground',
@@ -72,6 +74,8 @@ export function ExportBar({
             step={0.01}
             value={quality}
             onChange={(e) => onQualityChange(Number(e.target.value))}
+            aria-label="Output quality"
+            aria-valuetext={`${Math.round(quality * 100)} percent`}
             className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-secondary accent-primary"
           />
         </div>

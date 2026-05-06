@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { cropImage, type CropBox, type OutputFormat, type OutputSize } from '@/lib/crop'
+import { cropInWorker } from '@/lib/cropClient'
+import type { CropBox, OutputFormat, OutputSize } from '@/lib/crop'
 
 type Args = {
-  bitmap: ImageBitmap | null
+  sourceBlob: Blob | null
+  scale?: number
   box: CropBox | null
   output: OutputSize | null
   format: OutputFormat
@@ -17,7 +19,8 @@ type Result = {
 }
 
 export function useCroppedBlob({
-  bitmap,
+  sourceBlob,
+  scale = 1,
   box,
   output,
   format,
@@ -27,7 +30,7 @@ export function useCroppedBlob({
   const [state, setState] = useState<Result>({ blob: null, loading: false, error: null })
 
   useEffect(() => {
-    if (!bitmap || !box || !output) {
+    if (!sourceBlob || !box || !output) {
       setState({ blob: null, loading: false, error: null })
       return
     }
@@ -35,7 +38,16 @@ export function useCroppedBlob({
     setState((prev) => ({ ...prev, loading: true, error: null }))
     const timer = setTimeout(async () => {
       try {
-        const blob = await cropImage(bitmap, box, output, { format, quality })
+        const fullResBox: CropBox =
+          scale < 1
+            ? {
+                x: box.x / scale,
+                y: box.y / scale,
+                width: box.width / scale,
+                height: box.height / scale,
+              }
+            : box
+        const blob = await cropInWorker(sourceBlob, fullResBox, output, { format, quality })
         if (!cancelled) setState({ blob, loading: false, error: null })
       } catch (err) {
         if (!cancelled) {
@@ -51,7 +63,19 @@ export function useCroppedBlob({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [bitmap, box?.x, box?.y, box?.width, box?.height, output?.width, output?.height, format, quality, debounceMs])
+  }, [
+    sourceBlob,
+    scale,
+    box?.x,
+    box?.y,
+    box?.width,
+    box?.height,
+    output?.width,
+    output?.height,
+    format,
+    quality,
+    debounceMs,
+  ])
 
   return state
 }

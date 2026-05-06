@@ -60,14 +60,14 @@ export function Dropzone({ onFile, onBlob, className }: DropzoneProps) {
       <div className="text-center">
         <p className="text-lg font-medium">Drop an image</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Drag &amp; drop, paste, or click to choose. Everything stays in your browser.
+          {'Drag & drop, paste, or click to choose. Everything stays in your browser.'}
         </p>
       </div>
       <input
         ref={inputRef}
         id="dropzone-input"
         type="file"
-        accept="image/*,.heic,.heif"
+        accept="image/*,video/*,.heic,.heif,.mp4,.mov,.webm,.mkv"
         className="sr-only"
         onChange={(e) => handleFiles(e.target.files)}
       />
