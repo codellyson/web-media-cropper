@@ -10,6 +10,8 @@ type Args = {
   format: OutputFormat
   quality: number
   fillMode?: FillMode
+  /** CSS blur radius for fit-mode bleed, in pixels. Ignored when fillMode === 'crop'. */
+  blurPx?: number
   debounceMs?: number
 }
 
@@ -27,6 +29,7 @@ export function useCroppedBlob({
   format,
   quality,
   fillMode = 'crop',
+  blurPx,
   debounceMs = 250,
 }: Args): Result {
   const [state, setState] = useState<Result>({ blob: null, loading: false, error: null })
@@ -55,6 +58,7 @@ export function useCroppedBlob({
           format,
           quality,
           fillMode,
+          blurPx,
         })
         if (!cancelled) setState({ blob, loading: false, error: null })
       } catch (err) {
@@ -83,6 +87,7 @@ export function useCroppedBlob({
     format,
     quality,
     fillMode,
+    blurPx,
     debounceMs,
   ])
 

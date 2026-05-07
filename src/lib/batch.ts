@@ -41,6 +41,8 @@ export async function runBatch(
     format: OutputFormat
     quality: number
     fillMode?: FillMode
+    /** Bleed blur amount for fit mode (4–48 CSS-px). Ignored when fillMode === 'crop'. */
+    blurPx?: number
     onProgress?: (p: BatchProgress) => void
   },
 ): Promise<Blob> {
@@ -54,6 +56,7 @@ export async function runBatch(
   const zip = new JSZip()
   const imageExt = extFor(options.format)
   const fillMode: FillMode = options.fillMode ?? 'crop'
+  const blurPx = options.blurPx
 
   let i = 0
   for (const file of files) {
@@ -66,6 +69,7 @@ export async function runBatch(
         total,
         zip,
         fillMode,
+        blurPx,
         options.onProgress,
       )
     } else {
@@ -80,6 +84,7 @@ export async function runBatch(
         options.format,
         options.quality,
         fillMode,
+        blurPx,
         options.onProgress,
       )
     }
@@ -103,6 +108,7 @@ async function processImageFile(
   format: OutputFormat,
   quality: number,
   fillMode: FillMode,
+  blurPx: number | undefined,
   onProgress?: (p: BatchProgress) => void,
 ): Promise<number> {
   let i = startIdx
@@ -152,7 +158,7 @@ async function processImageFile(
                 height: Math.round(preset.height * scale),
               }
             })()
-      const blob = await cropInWorker(file, box, out, { format, quality, fillMode })
+      const blob = await cropInWorker(file, box, out, { format, quality, fillMode, blurPx })
       const base = safeName(file.name.replace(/\.[^.]+$/, ''))
       const folder = zip.folder(base) ?? zip
       const suffix = fillMode === 'fit' ? '-fit' : ''
@@ -179,6 +185,7 @@ async function processVideoFile(
   total: number,
   zip: JSZip,
   fillMode: FillMode,
+  blurPx: number | undefined,
   onProgress?: (p: BatchProgress) => void,
 ): Promise<number> {
   let i = startIdx
@@ -247,7 +254,7 @@ async function processVideoFile(
         file.name,
         { x: box.x, y: box.y, w: box.width, h: box.height },
         out,
-        { crf: VIDEO_CRF, fillMode },
+        { crf: VIDEO_CRF, fillMode, blurPx },
       )
       const base = safeName(file.name.replace(/\.[^.]+$/, ''))
       const folder = zip.folder(base) ?? zip

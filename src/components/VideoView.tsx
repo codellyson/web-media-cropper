@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { EditorShell } from '@/components/editor/EditorShell'
+import { EditorShell, RailSlider } from '@/components/editor/EditorShell'
 import { VideoTimeline } from '@/components/editor/VideoTimeline'
 import { formatDuration, type LoadedVideo } from '@/lib/loadVideo'
 import { formatBytes } from '@/lib/crop'
@@ -72,7 +72,8 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
   const [trimAccurate, setTrimAccurate] = useState(false)
   const [cropPresetId, setCropPresetId] = useState<string>(VIDEO_PRESETS[0].id)
   const [cropOffset, setCropOffset] = useState<{ dx: number; dy: number }>({ dx: 0, dy: 0 })
-  const [cropFillMode, setCropFillMode] = useState<'crop' | 'fit'>('crop')
+  const [cropFillMode, setCropFillMode] = useState<'crop' | 'fit'>('fit')
+  const [cropBlurPx, setCropBlurPx] = useState<number>(24)
   const [cropping, setCropping] = useState(false)
   const [compressTarget, setCompressTarget] = useState('10 MB')
   const [compressing, setCompressing] = useState(false)
@@ -82,11 +83,10 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
   const engine = useEngineStatus()
   const [keyframes, setKeyframes] = useState<number[]>([])
 
-  useEffect(() => {
-    setTrimIn(0)
-    setTrimOut(video.durationMs)
-    setKeyframes([])
-  }, [video.durationMs])
+  // No reset-on-source-change effect needed — App.tsx mounts <VideoView>
+  // with key={state.objectUrl}, so loading a new file produces a fresh
+  // component instance and useState initializers above pick up the new
+  // duration/source naturally.
 
   useEffect(() => {
     if (engine.kind !== 'ready') return
@@ -360,6 +360,10 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
         cropFillMode === 'fit'
           ? { width: cropPreset.width, height: cropPreset.height }
           : outputForCrop(cropPreset, box.w, box.h)
+      // Apply trim only when the user has actually narrowed the range — avoids
+      // a pointless -ss 0 -to duration on every export.
+      const isTrimmed =
+        trimIn > 0 || trimOut < video.durationMs - 1
       const out = await cropEncodeVideo(
         video.sourceBlob,
         video.name,
@@ -367,12 +371,20 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
         { width: output.width, height: output.height },
         {
           fillMode: cropFillMode,
+          blurPx: cropBlurPx,
+          trimMs: isTrimmed ? { in: trimIn, out: trimOut } : undefined,
           onProgress: (pct) => setProgress({ label, pct }),
         },
       )
       const base = video.name.replace(/\.[^.]+$/, '')
-      const suffix = cropFillMode === 'fit' ? '-fit' : ''
-      downloadBlob(out, `${base}-${cropPreset.id}-${output.width}x${output.height}${suffix}.mp4`)
+      const fitSuffix = cropFillMode === 'fit' ? '-fit' : ''
+      const trimSuffix = isTrimmed
+        ? `-${Math.round(trimIn / 100) / 10}s-${Math.round(trimOut / 100) / 10}s`
+        : ''
+      downloadBlob(
+        out,
+        `${base}-${cropPreset.id}-${output.width}x${output.height}${fitSuffix}${trimSuffix}.mp4`,
+      )
     } catch (err) {
       console.error('[exportCrop]', err)
     } finally {
@@ -429,10 +441,16 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
       </button>
     )
   } else if (mode === 'crop') {
+    const cropTrimmed = trimIn > 0 || trimOut < video.durationMs - 1
     const disabled = cropping || engine.kind === 'loading'
+    const baseLabel = cropFillMode === 'fit' ? 'Export fit' : 'Export crop'
     mobileAction = (
       <button type="button" onClick={exportCrop} disabled={disabled} className={mobileActionClass}>
-        {cropping ? 'Encoding…' : cropFillMode === 'fit' ? 'Export fit' : 'Export crop'}
+        {cropping
+          ? 'Encoding…'
+          : cropTrimmed
+            ? `${baseLabel} · ${formatDuration(trimOut - trimIn)}`
+            : baseLabel}
       </button>
     )
   } else if (mode === 'compress') {
@@ -500,23 +518,37 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
         </Button>
       }
       leftRail={
-        <div className="flex flex-col gap-3">
-          <RailHeader>Source</RailHeader>
-          <div className="flex flex-col gap-1.5 rounded-lg border border-[var(--ic-line)] bg-[var(--ic-card)] p-2.5">
-            <Stat label="Dimensions" value={`${video.width}×${video.height}`} />
-            <Stat label="Duration" value={formatDuration(video.durationMs)} />
-            <Stat label="Size" value={formatBytes(video.sizeBytes)} />
-            <Stat label="Container" value={video.mime.replace(/^video\//, '') || 'unknown'} />
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
+            <RailHeader>Source</RailHeader>
+            <div className="flex flex-col gap-1.5 rounded-lg border border-[var(--ic-line)] bg-[var(--ic-card)] p-2.5">
+              <Stat label="Dimensions" value={`${video.width}×${video.height}`} />
+              <Stat label="Duration" value={formatDuration(video.durationMs)} />
+              <Stat label="Size" value={formatBytes(video.sizeBytes)} />
+              <Stat label="Container" value={video.mime.replace(/^video\//, '') || 'unknown'} />
+            </div>
           </div>
-          <p className="px-1 font-mono-geist text-[10.5px] leading-relaxed text-[var(--ic-ink-4)]">
-            {mode === 'frame'
-              ? '← /  step ±1 frame · space play/pause · C capture'
-              : mode === 'trim'
-                ? 'Drag the in / out handles. Cuts may snap to the nearest keyframe.'
-                : mode === 'crop'
-                  ? 'Pick a platform. Crop is centered and applied to every frame at export.'
+
+          {mode === 'crop' ? (
+            <div className="flex flex-col gap-3 border-t border-[var(--ic-line)] pt-3">
+              <RailHeader>Aspect</RailHeader>
+              <CropAspectRail
+                presetId={cropPresetId}
+                onPickPreset={(id) => {
+                  setCropPresetId(id)
+                  setCropOffset({ dx: 0, dy: 0 })
+                }}
+              />
+            </div>
+          ) : (
+            <p className="px-1 font-mono-geist text-[10.5px] leading-relaxed text-[var(--ic-ink-4)]">
+              {mode === 'frame'
+                ? '← /  step ±1 frame · space play/pause · C capture'
+                : mode === 'trim'
+                  ? 'Drag the in / out handles. Cuts may snap to the nearest keyframe.'
                   : 'Set a target file size. Output is a universal MP4.'}
-          </p>
+            </p>
+          )}
         </div>
       }
       rightRail={
@@ -550,10 +582,6 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
         ) : mode === 'crop' ? (
           <CropRail
             presetId={cropPresetId}
-            onPickPreset={(id) => {
-              setCropPresetId(id)
-              setCropOffset({ dx: 0, dy: 0 })
-            }}
             offset={cropOffset}
             onResetOffset={() => setCropOffset({ dx: 0, dy: 0 })}
             sourceWidth={video.width}
@@ -562,6 +590,15 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
             onFillModeChange={(m) => {
               setCropFillMode(m)
               if (m === 'fit') setCropOffset({ dx: 0, dy: 0 })
+            }}
+            blurPx={cropBlurPx}
+            onBlurPxChange={setCropBlurPx}
+            durationMs={video.durationMs}
+            trimIn={trimIn}
+            trimOut={trimOut}
+            onResetTrim={() => {
+              setTrimIn(0)
+              setTrimOut(video.durationMs)
             }}
             engine={engine}
             cropping={cropping}
@@ -614,7 +651,9 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
         currentMs={currentMs}
         playing={playing}
         capturedTimes={mode === 'frame' ? captures.map((c) => c.timeMs) : []}
-        keyframeTimes={mode === 'trim' && !trimAccurate ? keyframes : []}
+        keyframeTimes={
+          (mode === 'trim' && !trimAccurate) || mode === 'crop' ? keyframes : []
+        }
         onSeek={seek}
         onPlayToggle={togglePlay}
         onStep={step}
@@ -631,7 +670,7 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
           ) : null
         }
         trim={
-          mode === 'trim'
+          mode === 'trim' || mode === 'crop'
             ? {
                 inMs: trimIn,
                 outMs: trimOut,
@@ -656,6 +695,7 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
         cropOffset={mode === 'crop' ? cropOffset : undefined}
         onCropOffsetChange={mode === 'crop' && cropFillMode === 'crop' ? setCropOffset : undefined}
         cropFillMode={mode === 'crop' ? cropFillMode : undefined}
+        fitBlurPx={mode === 'crop' ? cropBlurPx : undefined}
         encodeProgress={progress}
       />
     </EditorShell>
@@ -894,6 +934,7 @@ type CanvasProps = {
   cropOffset?: { dx: number; dy: number }
   onCropOffsetChange?: (next: { dx: number; dy: number }) => void
   cropFillMode?: 'crop' | 'fit'
+  fitBlurPx?: number
   encodeProgress?: { label: string; pct: number } | null
 }
 
@@ -916,6 +957,7 @@ function VideoCanvas({
   cropOffset,
   onCropOffsetChange,
   cropFillMode,
+  fitBlurPx,
   encodeProgress,
 }: CanvasProps) {
   const sourceAspect = video.width / video.height
@@ -1006,6 +1048,7 @@ function VideoCanvas({
               frameW={frame.w}
               frameH={frame.h}
               visible={fitting}
+              blurPx={fitBlurPx ?? 24}
             />
             {fitting && (
               <div
@@ -1152,11 +1195,13 @@ function FitBackdrop({
   frameW,
   frameH,
   visible,
+  blurPx = 24,
 }: {
   videoRef: React.RefObject<HTMLVideoElement | null>
   frameW: number
   frameH: number
   visible: boolean
+  blurPx?: number
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rafRef = useRef<number | null>(null)
@@ -1232,9 +1277,10 @@ function FitBackdrop({
       style={{
         display: visible ? 'block' : 'none',
         // Slight upscale so the blur halo doesn't reveal transparent edges
-        // when clipped by the parent's rounded-md.
-        transform: 'scale(1.08)',
-        filter: 'blur(20px)',
+        // when clipped by the parent's rounded-md. The scale tracks the blur
+        // amount because larger blur radii fade further past the edge.
+        transform: `scale(${1.04 + Math.min(0.08, blurPx / 600)})`,
+        filter: `blur(${blurPx}px)`,
         background: '#000',
       }}
     />
@@ -1246,6 +1292,48 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="flex items-baseline justify-between">
       <span className="text-[12px] text-[var(--ic-ink-3)]">{label}</span>
       <span className="font-mono-geist text-[12px] font-semibold text-[var(--ic-ink)]">{value}</span>
+    </div>
+  )
+}
+
+/**
+ * "Selection" row in the crop rail's output card. Shows the current trim range
+ * as part of the export summary; surfaces a one-click reset only when trimmed.
+ * Always rendered so users discover that the timeline edges are draggable.
+ */
+function SelectionStat({
+  isTrimmed,
+  selectedMs,
+  durationMs,
+  onReset,
+}: {
+  isTrimmed: boolean
+  selectedMs: number
+  durationMs: number
+  onReset: () => void
+}) {
+  return (
+    <div className="flex items-baseline justify-between">
+      <span className="text-[12px] text-[var(--ic-ink-3)]">Selection</span>
+      <span className="inline-flex items-baseline gap-2">
+        <span
+          className={`font-mono-geist text-[12px] font-semibold ${
+            isTrimmed ? 'text-[var(--ic-accent)]' : 'text-[var(--ic-ink-3)]'
+          }`}
+        >
+          {isTrimmed ? formatDuration(selectedMs) : `Full · ${formatDuration(durationMs)}`}
+        </span>
+        {isTrimmed && (
+          <button
+            type="button"
+            onClick={onReset}
+            aria-label="Reset trim"
+            className="font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
+          >
+            reset
+          </button>
+        )}
+      </span>
     </div>
   )
 }
@@ -1410,45 +1498,18 @@ function CropOverlay({
   )
 }
 
-function CropRail({
+/**
+ * Left-rail preset list for the Crop tool. Pulled out of CropRail so the right
+ * rail (settings) and left rail (navigation/aspect picker) don't fight for
+ * vertical space. Mirrors the image studio's FormatRail placement.
+ */
+function CropAspectRail({
   presetId,
   onPickPreset,
-  offset,
-  onResetOffset,
-  sourceWidth,
-  sourceHeight,
-  fillMode,
-  onFillModeChange,
-  engine,
-  cropping,
-  onExport,
 }: {
   presetId: string
   onPickPreset: (id: string) => void
-  offset: { dx: number; dy: number }
-  onResetOffset: () => void
-  sourceWidth: number
-  sourceHeight: number
-  fillMode: 'crop' | 'fit'
-  onFillModeChange: (m: 'crop' | 'fit') => void
-  engine: ReturnType<typeof useEngineStatus>
-  cropping: boolean
-  onExport: () => void
 }) {
-  const isFit = fillMode === 'fit'
-  const active = VIDEO_PRESETS.find((p) => p.id === presetId) ?? VIDEO_PRESETS[0]
-  const aspect = active.width / active.height
-  const baseBox = centeredCropBox(sourceWidth, sourceHeight, aspect)
-  const maxDx = (sourceWidth - baseBox.w) / 2
-  const maxDy = (sourceHeight - baseBox.h) / 2
-  const dx = Math.max(-maxDx, Math.min(maxDx, offset.dx))
-  const dy = Math.max(-maxDy, Math.min(maxDy, offset.dy))
-  const box = { x: Math.round(baseBox.x + dx), y: Math.round(baseBox.y + dy), w: baseBox.w, h: baseBox.h }
-  const output = outputForCrop(active, box.w, box.h)
-  const isOffset = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5
-
-  // Group by aspect category so the user picks "vertical/square/wide" before
-  // platform — same pattern as the studio's FormatRail.
   const portrait: VideoPreset[] = []
   const square: VideoPreset[] = []
   const landscape: VideoPreset[] = []
@@ -1465,14 +1526,111 @@ function CropRail({
   ].filter((g) => g.items.length > 0)
 
   return (
+    <div className="flex flex-col gap-4">
+      {groups.map((group) => (
+        <div key={group.id} className="flex flex-col gap-1">
+          <div className="px-2.5 pb-1 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[var(--ic-ink-4)]">
+            {group.label}
+          </div>
+          {group.items.map((p) => {
+            const on = p.id === presetId
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => onPickPreset(p.id)}
+                aria-pressed={on}
+                className={`relative flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-[13px] font-medium transition ${
+                  on
+                    ? 'bg-[var(--ic-card)] text-[var(--ic-ink)]'
+                    : 'bg-transparent text-[var(--ic-ink-2)] hover:bg-[var(--ic-card)] hover:text-[var(--ic-ink)]'
+                }`}
+              >
+                {on && (
+                  <span
+                    aria-hidden
+                    className="absolute -left-3 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-sm"
+                    style={{ background: 'var(--ic-accent)' }}
+                  />
+                )}
+                <span className="inline-flex items-center gap-2.5">
+                  <PlatformIcon platform={p.platform} size={16} />
+                  {p.short ?? p.name}
+                </span>
+                <span
+                  className={`font-mono-geist text-[11px] ${
+                    on ? 'text-[var(--ic-ink-3)]' : 'text-[var(--ic-ink-4)]'
+                  }`}
+                >
+                  {videoRatioLabel(p)}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function CropRail({
+  presetId,
+  offset,
+  onResetOffset,
+  sourceWidth,
+  sourceHeight,
+  fillMode,
+  onFillModeChange,
+  blurPx,
+  onBlurPxChange,
+  durationMs,
+  trimIn,
+  trimOut,
+  onResetTrim,
+  engine,
+  cropping,
+  onExport,
+}: {
+  presetId: string
+  offset: { dx: number; dy: number }
+  onResetOffset: () => void
+  sourceWidth: number
+  sourceHeight: number
+  fillMode: 'crop' | 'fit'
+  onFillModeChange: (m: 'crop' | 'fit') => void
+  blurPx: number
+  onBlurPxChange: (v: number) => void
+  durationMs: number
+  trimIn: number
+  trimOut: number
+  onResetTrim: () => void
+  engine: ReturnType<typeof useEngineStatus>
+  cropping: boolean
+  onExport: () => void
+}) {
+  const isFit = fillMode === 'fit'
+  const active = VIDEO_PRESETS.find((p) => p.id === presetId) ?? VIDEO_PRESETS[0]
+  const aspect = active.width / active.height
+  const baseBox = centeredCropBox(sourceWidth, sourceHeight, aspect)
+  const maxDx = (sourceWidth - baseBox.w) / 2
+  const maxDy = (sourceHeight - baseBox.h) / 2
+  const dx = Math.max(-maxDx, Math.min(maxDx, offset.dx))
+  const dy = Math.max(-maxDy, Math.min(maxDy, offset.dy))
+  const box = { x: Math.round(baseBox.x + dx), y: Math.round(baseBox.y + dy), w: baseBox.w, h: baseBox.h }
+  const output = outputForCrop(active, box.w, box.h)
+  const isOffset = Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5
+  const isTrimmed = trimIn > 0 || trimOut < durationMs - 1
+  const selectedMs = Math.max(0, trimOut - trimIn)
+
+  return (
     <>
-      <RailHeader>Fit</RailHeader>
+      <RailHeader>Mode</RailHeader>
       <div
         role="radiogroup"
         aria-label="Fill mode"
         className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
       >
-        {(['crop', 'fit'] as const).map((m) => (
+        {(['fit', 'crop'] as const).map((m) => (
           <button
             key={m}
             type="button"
@@ -1485,92 +1643,60 @@ function CropRail({
                 : 'text-[var(--ic-ink-3)] hover:text-[var(--ic-ink)]'
             }`}
           >
-            {m === 'crop' ? 'Crop' : 'Fit'}
+            {m === 'fit' ? 'Fit' : 'Crop'}
           </button>
         ))}
       </div>
-      <p className="-mt-1 text-[11px] leading-snug text-[var(--ic-ink-4)]">
-        {isFit
-          ? 'Source contained inside the frame · blurred bleed fills the rest.'
-          : 'Subject-aware crop fills the frame.'}
-      </p>
 
-      <div className="flex flex-col gap-4">
-        {groups.map((group) => (
-          <div key={group.id} className="flex flex-col gap-1">
-            <div className="px-2.5 pb-1 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[var(--ic-ink-4)]">
-              {group.label}
-            </div>
-            {group.items.map((p) => {
-              const on = p.id === presetId
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => onPickPreset(p.id)}
-                  aria-pressed={on}
-                  className={`relative flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-[13px] font-medium transition ${
-                    on
-                      ? 'bg-[var(--ic-card)] text-[var(--ic-ink)]'
-                      : 'bg-transparent text-[var(--ic-ink-2)] hover:bg-[var(--ic-card)] hover:text-[var(--ic-ink)]'
-                  }`}
-                >
-                  {on && (
-                    <span
-                      aria-hidden
-                      className="absolute -left-3 top-1/2 h-[18px] w-[3px] -translate-y-1/2 rounded-sm"
-                      style={{ background: 'var(--ic-accent)' }}
-                    />
-                  )}
-                  <span className="inline-flex items-center gap-2.5">
-                    <PlatformIcon platform={p.platform} size={16} />
-                    {p.short ?? p.name}
-                  </span>
-                  <span
-                    className={`font-mono-geist text-[11px] ${
-                      on ? 'text-[var(--ic-ink-3)]' : 'text-[var(--ic-ink-4)]'
-                    }`}
-                  >
-                    {videoRatioLabel(p)}
-                  </span>
-                </button>
-              )
-            })}
+      {isFit ? (
+        <>
+          <RailHeader>Bleed</RailHeader>
+          <RailSlider
+            label="Blur"
+            value={blurPx}
+            valueLabel={blurPx <= 12 ? 'soft' : blurPx <= 28 ? 'medium' : 'strong'}
+            min={4}
+            max={48}
+            onChange={onBlurPxChange}
+          />
+          <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] p-3">
+            <Stat label="Output" value={`${active.width}×${active.height}`} />
+            <SelectionStat
+              isTrimmed={isTrimmed}
+              selectedMs={selectedMs}
+              durationMs={durationMs}
+              onReset={onResetTrim}
+            />
           </div>
-        ))}
-      </div>
-
-      <RailHeader>{isFit ? 'Output' : 'Crop region'}</RailHeader>
-      <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] p-3">
-        <Stat
-          label="Output"
-          value={
-            isFit ? `${active.width}×${active.height}` : `${output.width}×${output.height}`
-          }
-        />
-        {!isFit && (
-          <>
+        </>
+      ) : (
+        <>
+          <RailHeader>Crop region</RailHeader>
+          <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] p-3">
+            <Stat label="Output" value={`${output.width}×${output.height}`} />
             <Stat label="Source crop" value={`${box.w}×${box.h}`} />
             <Stat label="Offset" value={`${box.x},${box.y}`} />
-          </>
-        )}
-      </div>
-
-      {!isFit && isOffset && (
-        <button
-          type="button"
-          onClick={onResetOffset}
-          className="self-start font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
-        >
-          recenter crop
-        </button>
+            <SelectionStat
+              isTrimmed={isTrimmed}
+              selectedMs={selectedMs}
+              durationMs={durationMs}
+              onReset={onResetTrim}
+            />
+          </div>
+          {isOffset && (
+            <button
+              type="button"
+              onClick={onResetOffset}
+              className="self-start font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
+            >
+              recenter crop
+            </button>
+          )}
+          <p className="px-1 text-[11px] leading-relaxed text-[var(--ic-ink-4)]">
+            Drag inside the frame to reposition · drag the timeline edges to trim. Audio kept as-is.
+          </p>
+        </>
       )}
-
-      <p className="px-1 text-[11px] leading-relaxed text-[var(--ic-ink-4)]">
-        {isFit
-          ? 'Whole source kept · blurred bleed fills the bars. Audio kept as-is.'
-          : 'Drag inside the frame to reposition. Audio kept as-is.'}
-      </p>
 
       <div className="mt-auto flex flex-col gap-2">
         <button

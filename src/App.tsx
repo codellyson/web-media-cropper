@@ -100,7 +100,8 @@ export default function App() {
   const [subjectLock, setSubjectLock] = useState(78)
   const [padding, setPadding] = useState(12)
   const [holdOnFaces, setHoldOnFaces] = useState(true)
-  const [fillMode, setFillMode] = useState<FillMode>('crop')
+  const [fillMode, setFillMode] = useState<FillMode>('fit')
+  const [blurPx, setBlurPx] = useState<number>(24)
 
   const focalPoint = useMemo<FocalPoint | null>(() => {
     if (!detection) return null
@@ -177,6 +178,7 @@ export default function App() {
     format,
     quality,
     fillMode,
+    blurPx,
   })
 
   const handleDownload = async () => {
@@ -257,7 +259,12 @@ export default function App() {
         <NavBar />
 
         <main className="mx-auto flex w-full max-w-[1320px] flex-1 flex-col px-8 py-8">
-          <VideoView video={state.video} objectUrl={state.objectUrl} onClear={reset} />
+          <VideoView
+            key={state.objectUrl}
+            video={state.video}
+            objectUrl={state.objectUrl}
+            onClear={reset}
+          />
         </main>
 
         <footer className="border-t border-[var(--ic-line)]">
@@ -361,6 +368,8 @@ export default function App() {
             <RailRight
               fillMode={fillMode}
               onFillModeChange={setFillMode}
+              blurPx={blurPx}
+              onBlurPxChange={setBlurPx}
               subjectLock={subjectLock}
               onSubjectLockChange={setSubjectLock}
               padding={padding}
@@ -439,6 +448,7 @@ export default function App() {
                 sourceWidth={state.image.width}
                 sourceHeight={state.image.height}
                 aspect={aspect}
+                blurPx={blurPx}
               />
             ) : focalPoint ? (
               <>

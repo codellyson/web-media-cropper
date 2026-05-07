@@ -13,6 +13,8 @@ const BASE_FORMATS: { value: OutputFormat; label: string }[] = [
 type RailRightProps = {
   fillMode: FillMode
   onFillModeChange: (m: FillMode) => void
+  blurPx: number
+  onBlurPxChange: (v: number) => void
   subjectLock: number
   onSubjectLockChange: (v: number) => void
   padding: number
@@ -33,9 +35,17 @@ type RailRightProps = {
   exifSupported: boolean
 }
 
+function blurLabel(px: number): string {
+  if (px <= 12) return 'soft'
+  if (px <= 28) return 'medium'
+  return 'strong'
+}
+
 export function RailRight({
   fillMode,
   onFillModeChange,
+  blurPx,
+  onBlurPxChange,
   subjectLock,
   onSubjectLockChange,
   padding,
@@ -69,13 +79,13 @@ export function RailRight({
   const lockLabel = subjectLock > 75 ? 'strong' : subjectLock > 35 ? 'medium' : 'soft'
   return (
     <>
-      <RailHeader>Fit</RailHeader>
+      <RailHeader>Mode</RailHeader>
       <div
         role="radiogroup"
         aria-label="Fill mode"
         className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
       >
-        {(['crop', 'fit'] as const).map((m) => (
+        {(['fit', 'crop'] as const).map((m) => (
           <button
             key={m}
             type="button"
@@ -88,37 +98,45 @@ export function RailRight({
                 : 'text-[var(--ic-ink-3)] hover:text-[var(--ic-ink)]'
             }`}
           >
-            {m === 'crop' ? 'Crop' : 'Fit'}
+            {m === 'fit' ? 'Fit' : 'Crop'}
           </button>
         ))}
       </div>
-      <p className="-mt-1 text-[11px] leading-snug text-[var(--ic-ink-4)]">
-        {isFit
-          ? 'Source contained inside the frame, blurred bleed fills the rest.'
-          : 'Subject-aware crop fills the frame.'}
-      </p>
 
-      <RailHeader>Smart reframe</RailHeader>
-      <div className={isFit ? 'pointer-events-none opacity-40' : undefined} aria-hidden={isFit}>
-        <RailSlider
-          label="Subject lock"
-          value={subjectLock}
-          valueLabel={lockLabel}
-          min={0}
-          max={100}
-          onChange={onSubjectLockChange}
-        />
-        <div className="h-2" />
-        <RailSlider
-          label="Padding"
-          value={padding}
-          valueLabel={`${padding}%`}
-          min={0}
-          max={30}
-          onChange={onPaddingChange}
-        />
-        <Switch label="Hold on faces" on={holdOnFaces} onChange={onHoldOnFacesChange} />
-      </div>
+      {isFit ? (
+        <>
+          <RailHeader>Bleed</RailHeader>
+          <RailSlider
+            label="Blur"
+            value={blurPx}
+            valueLabel={blurLabel(blurPx)}
+            min={4}
+            max={48}
+            onChange={onBlurPxChange}
+          />
+        </>
+      ) : (
+        <>
+          <RailHeader>Reframe</RailHeader>
+          <RailSlider
+            label="Subject lock"
+            value={subjectLock}
+            valueLabel={lockLabel}
+            min={0}
+            max={100}
+            onChange={onSubjectLockChange}
+          />
+          <RailSlider
+            label="Padding"
+            value={padding}
+            valueLabel={`${padding}%`}
+            min={0}
+            max={30}
+            onChange={onPaddingChange}
+          />
+          <Switch label="Hold on faces" on={holdOnFaces} onChange={onHoldOnFacesChange} />
+        </>
+      )}
 
       <RailHeader>Output</RailHeader>
       <div className="flex flex-col gap-2">

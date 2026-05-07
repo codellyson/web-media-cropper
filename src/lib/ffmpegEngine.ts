@@ -468,7 +468,14 @@ export async function cropEncodeVideo(
     crf?: number
     onProgress?: ProgressCallback
     fillMode?: 'crop' | 'fit'
-    blurSigma?: number
+    /** Target effective blur radius in CSS-px terms (4–48). Higher = softer bleed. */
+    blurPx?: number
+    /**
+     * Optional trim range in milliseconds. When provided, the encode emits only
+     * frames in [in, out]. Done in the same ffmpeg pass as the crop/fit so we
+     * stay at one re-encode, not two.
+     */
+    trimMs?: { in: number; out: number }
   } = {},
 ): Promise<Blob> {
   const ff = await getFFmpeg()
@@ -485,23 +492,41 @@ export async function cropEncodeVideo(
   const ow = Math.max(2, Math.round(output.width / 2) * 2)
   const oh = Math.max(2, Math.round(output.height / 2) * 2)
 
-  // Fit mode: split source into two paths — a cover-fit Gaussian-blurred backdrop
-  // and a contain-fit foreground — then overlay the foreground centered on the backdrop.
-  // The crop coordinates are unused; the whole source is rendered.
-  // Sigma 20 roughly matches the canvas blur(40px) used in the image preview.
-  const blurSigma = Math.max(0, Math.min(40, options.blurSigma ?? 20))
+  // Fit mode: split source into two paths — a cover-fit blurred backdrop and a
+  // contain-fit foreground — then overlay the foreground centered on the backdrop.
+  //
+  // Perf note: blur ops are O(W*H*kernel) per frame, so a strong full-res Gaussian
+  // crawls in ffmpeg-wasm. Instead we cover-fit, downscale hard, run a cheap
+  // boxblur there, then upscale back. The upscale smoothing fills in the rest.
+  // 20–50× faster than the equivalent gblur at full resolution.
+  //
+  // The user-facing "blur" knob controls the downscale target (smaller = softer)
+  // plus boxblur passes for the high end of the range.
+  const blurPx = Math.max(4, Math.min(48, Math.round(options.blurPx ?? 24)))
+  const downscaleWidth = Math.max(120, Math.min(400, Math.round(480 - blurPx * 6)))
+  const boxblurPasses = blurPx >= 32 ? 3 : 2
   const fitFilter =
     `[0:v]split=2[bg][fg];` +
     `[bg]scale=${ow}:${oh}:force_original_aspect_ratio=increase,crop=${ow}:${oh},` +
-    `gblur=sigma=${blurSigma},eq=brightness=-0.1[bgblur];` +
+    `scale=${downscaleWidth}:-2,boxblur=2:${boxblurPasses},` +
+    `scale=${ow}:${oh}:flags=bilinear,eq=brightness=-0.1[bgblur];` +
     `[fg]scale=${ow}:${oh}:force_original_aspect_ratio=decrease:force_divisible_by=2[fitv];` +
     `[bgblur][fitv]overlay=(W-w)/2:(H-h)/2,format=yuv420p[outv]`
+
+  // Output-seek trim args (after -i) — accurate, suits the re-encode we're
+  // already doing. Empty array when no trim is requested.
+  const trim = options.trimMs
+  const trimArgs: string[] =
+    trim && trim.out > trim.in
+      ? ['-ss', fmtTime(trim.in), '-to', fmtTime(trim.out)]
+      : []
 
   const args: string[] =
     fillMode === 'fit'
       ? [
           '-i',
           inputName,
+          ...trimArgs,
           '-filter_complex',
           fitFilter,
           '-map',
@@ -521,6 +546,7 @@ export async function cropEncodeVideo(
       : [
           '-i',
           inputName,
+          ...trimArgs,
           '-vf',
           `crop=${iw}:${ih}:${ix}:${iy},scale=${ow}:${oh}`,
           '-c:v',

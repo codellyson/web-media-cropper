@@ -20,7 +20,7 @@ export function FitPreview({
   sourceWidth,
   sourceHeight,
   aspect,
-  blurPx = 40,
+  blurPx = 24,
 }: FitPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)

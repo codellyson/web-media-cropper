@@ -35,6 +35,7 @@ type StoredSettings = {
   format?: OutputFormat
   quality?: number
   fillMode?: FillMode
+  blurPx?: number
 }
 
 type VideoMeta = { durationMs: number }
@@ -103,7 +104,12 @@ export function BatchView() {
   })
   const [fillMode, setFillMode] = useState<FillMode>(() => {
     const m = loadStoredSettings()?.fillMode
-    return m === 'fit' ? 'fit' : 'crop'
+    // Fit is the default; persisted 'crop' overrides only when explicitly set.
+    return m === 'crop' ? 'crop' : 'fit'
+  })
+  const [blurPx, setBlurPx] = useState<number>(() => {
+    const b = loadStoredSettings()?.blurPx
+    return typeof b === 'number' && b >= 4 && b <= 48 ? b : 24
   })
   const [progress, setProgress] = useState<BatchProgress | null>(null)
   const [running, setRunning] = useState(false)
@@ -120,12 +126,13 @@ export function BatchView() {
           format,
           quality,
           fillMode,
+          blurPx,
         }),
       )
     } catch {
       // ignore — quota or disabled storage is non-fatal
     }
-  }, [selected, format, quality, fillMode])
+  }, [selected, format, quality, fillMode, blurPx])
 
   // Track current files via ref so async video-thumbnail extraction can skip
   // setting state for files the user removed mid-flight.
@@ -252,6 +259,7 @@ export function BatchView() {
         format,
         quality,
         fillMode,
+        blurPx,
         onProgress: (p) => setProgress(p),
       })
       downloadBlob(zip, `wmc-batch-${new Date().toISOString().slice(0, 10)}.zip`)
@@ -525,17 +533,15 @@ export function BatchView() {
         title="Output"
         meta={hasVideos ? 'videos always mp4' : undefined}
       >
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
-          <div className="flex items-center gap-3">
-            <span className="font-mono-geist text-[11px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)]">
-              Fill
-            </span>
+        <div className="flex flex-col gap-4">
+          {/* Row 1: Mode */}
+          <SettingRow label="Mode">
             <div
               role="radiogroup"
               aria-label="Fill mode"
               className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
             >
-              {(['crop', 'fit'] as const).map((m) => (
+              {(['fit', 'crop'] as const).map((m) => (
                 <button
                   key={m}
                   type="button"
@@ -548,16 +554,32 @@ export function BatchView() {
                       : 'text-[var(--ic-ink-3)] hover:text-[var(--ic-ink)]'
                   }`}
                 >
-                  {m === 'crop' ? 'Crop' : 'Fit'}
+                  {m === 'fit' ? 'Fit' : 'Crop'}
                 </button>
               ))}
             </div>
-          </div>
+          </SettingRow>
 
-          <div className="flex items-center gap-3">
-            <span className="font-mono-geist text-[11px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)]">
-              {hasVideos ? 'Image format' : 'Format'}
-            </span>
+          {/* Row 2: Blur (Fit only) */}
+          {fillMode === 'fit' && (
+            <SettingRow label="Blur">
+              <input
+                type="range"
+                min={4}
+                max={48}
+                value={blurPx}
+                onChange={(e) => setBlurPx(Number(e.target.value))}
+                className="w-40 accent-[var(--ic-ink)]"
+                aria-label="Bleed blur amount"
+              />
+              <span className="font-mono-geist text-[11px] tracking-[0.12em] text-[var(--ic-ink-3)]">
+                {blurPx <= 12 ? 'soft' : blurPx <= 28 ? 'medium' : 'strong'}
+              </span>
+            </SettingRow>
+          )}
+
+          {/* Row 3: Format */}
+          <SettingRow label={hasVideos ? 'Image format' : 'Format'}>
             <div
               role="radiogroup"
               aria-label="Output format"
@@ -580,35 +602,29 @@ export function BatchView() {
                 </button>
               ))}
             </div>
-          </div>
+          </SettingRow>
 
+          {/* Row 4: Quality */}
           {format !== 'png' && (
-            <div className="flex items-center gap-3">
-              <span className="font-mono-geist text-[11px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)]">
-                Quality
-              </span>
+            <SettingRow label="Quality">
               <input
                 type="range"
                 min={50}
                 max={100}
                 value={Math.round(quality * 100)}
                 onChange={(e) => setQuality(Number(e.target.value) / 100)}
-                className="w-32 accent-[var(--ic-ink)]"
+                className="w-40 accent-[var(--ic-ink)]"
                 aria-label="Output quality percentage"
               />
               <span className="font-mono-geist text-[11px] tracking-[0.12em] text-[var(--ic-ink-3)]">
                 {Math.round(quality * 100)}%
               </span>
-            </div>
+            </SettingRow>
           )}
         </div>
-        <p className="mt-3 font-mono-geist text-[10.5px] uppercase tracking-[0.14em] text-[var(--ic-ink-4)]">
-          {fillMode === 'fit'
-            ? 'Source contained inside the frame · blurred bleed fills the rest.'
-            : 'Subject-aware crop fills each frame.'}
-        </p>
+
         {hasVideos && (
-          <p className="mt-1 font-mono-geist text-[10.5px] uppercase tracking-[0.14em] text-[var(--ic-ink-4)]">
+          <p className="mt-4 font-mono-geist text-[10.5px] uppercase tracking-[0.14em] text-[var(--ic-ink-4)]">
             Videos encode to MP4 H.264 at CRF 23 · audio passes through where possible · 60s cap.
           </p>
         )}
@@ -668,6 +684,23 @@ export function BatchView() {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+function SettingRow({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <span className="w-[88px] shrink-0 font-mono-geist text-[11px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)]">
+        {label}
+      </span>
+      <div className="flex flex-wrap items-center gap-3">{children}</div>
     </div>
   )
 }
