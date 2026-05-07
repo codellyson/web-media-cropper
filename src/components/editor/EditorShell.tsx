@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { Crop, FileImage, Minimize2, Music, Scissors, Square } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Crop, FileImage, Minimize2, Music, Scissors, Settings2, Square, X } from 'lucide-react'
 
 export type EditorTool =
   | 'crop'
@@ -21,6 +21,10 @@ type EditorShellProps = {
   onToolChange: (t: EditorTool) => void
   leftRail: ReactNode
   rightRail?: ReactNode
+  /** Primary action surfaced in the mobile bottom action bar (typically a Download button). */
+  mobileAction?: ReactNode
+  /** Horizontal preset/aspect strip surfaced below the toolbar on mobile only. */
+  mobileAspects?: ReactNode
   children: ReactNode
 }
 
@@ -32,8 +36,22 @@ export function EditorShell({
   onToolChange,
   leftRail,
   rightRail,
+  mobileAction,
+  mobileAspects,
   children,
 }: EditorShellProps) {
+  const [sheetOpen, setSheetOpen] = useState(false)
+
+  // Lock body scroll while the mobile sheet is open.
+  useEffect(() => {
+    if (!sheetOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [sheetOpen])
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)]">
       <Toolbar
@@ -43,18 +61,81 @@ export function EditorShell({
         activeTool={activeTool}
         onToolChange={onToolChange}
       />
-      <div className="grid min-h-[560px] flex-1 lg:grid-cols-[230px_1fr_280px]">
-        <aside className="flex flex-col gap-5 border-r border-[var(--ic-line)] bg-[var(--ic-bg-2)] px-3 py-4 text-[13px]">
+      {mobileAspects}
+      {/* Single grid: at lg+ it's three columns; below lg it collapses to a flex
+          column where only the canvas (and the mobile bottom bar) are visible. */}
+      <div className="flex flex-1 flex-col lg:grid lg:min-h-[560px] lg:grid-cols-[230px_1fr_280px]">
+        <aside className="hidden flex-col gap-5 border-r border-[var(--ic-line)] bg-[var(--ic-bg-2)] px-3 py-4 text-[13px] lg:flex">
           {leftRail}
         </aside>
-        <div className="relative flex min-w-0 flex-col">{children}</div>
+        <div className="relative flex min-h-[420px] min-w-0 flex-1 flex-col">{children}</div>
         <aside
           className="hidden flex-col gap-4 overflow-y-auto border-l border-[var(--ic-line)] bg-[var(--ic-bg-2)] p-4 lg:flex"
           style={{ scrollbarGutter: 'stable' }}
         >
           {rightRail}
         </aside>
+        {/* Mobile bottom action bar — sticky at the bottom of the editor card. */}
+        <div className="sticky bottom-0 z-20 flex items-center justify-between gap-2 border-t border-[var(--ic-line)] bg-[var(--ic-bg-2)]/95 px-3 py-2.5 backdrop-blur lg:hidden">
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            aria-label="Open settings"
+            className="inline-flex h-10 items-center gap-2 rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] px-3.5 text-[12.5px] font-medium text-[var(--ic-ink-2)] transition hover:text-[var(--ic-ink)]"
+          >
+            <Settings2 size={14} />
+            Settings
+          </button>
+          <div className="flex min-w-0 items-center justify-end">{mobileAction}</div>
+        </div>
       </div>
+
+      {/* Mobile sheet drawer — only mounted while open. Renders the rail content
+          stacked vertically. Tap the scrim or the close button to dismiss. */}
+      {sheetOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Editor settings"
+          className="fixed inset-0 z-50 lg:hidden"
+        >
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setSheetOpen(false)}
+            aria-hidden
+          />
+          <div className="absolute inset-x-0 bottom-0 max-h-[88vh] overflow-y-auto rounded-t-2xl border-t border-[var(--ic-line)] bg-[var(--ic-card)] shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-[var(--ic-line)] bg-[var(--ic-card)] px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span
+                  aria-hidden
+                  className="block h-1 w-10 rounded-full bg-[var(--ic-ink-4)]"
+                  style={{ opacity: 0.4 }}
+                />
+                <span className="font-mono-geist text-[11px] uppercase tracking-[0.14em] text-[var(--ic-ink-3)]">
+                  Editor settings
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSheetOpen(false)}
+                aria-label="Close settings"
+                className="grid h-8 w-8 place-items-center rounded-full text-[var(--ic-ink-3)] transition hover:bg-[var(--ic-bg-2)] hover:text-[var(--ic-ink)]"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex flex-col gap-6 px-4 py-4 text-[13px]">
+              <section className="flex flex-col gap-5">{leftRail}</section>
+              {rightRail && (
+                <section className="flex flex-col gap-4 border-t border-[var(--ic-line)] pt-5">
+                  {rightRail}
+                </section>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

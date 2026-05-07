@@ -225,6 +225,21 @@ export function CompressView({ image, objectUrl, onClear, onSwitchTool }: Compre
           </div>
         </>
       }
+      mobileAction={
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={!output || running}
+          className="inline-flex h-10 items-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Download
+          {outBytes != null && (
+            <span className="font-mono-geist text-[10.5px] uppercase tracking-wider opacity-60">
+              {formatBytes(outBytes)}
+            </span>
+          )}
+        </button>
+      }
     >
       <CanvasView image={image} objectUrl={objectUrl} running={running} />
     </EditorShell>

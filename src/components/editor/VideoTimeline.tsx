@@ -102,7 +102,7 @@ export function VideoTimeline({
 
   return (
     <div className="border-t border-[var(--ic-line)] bg-[var(--ic-bg-2)] px-4 pt-3 pb-3">
-      <div className="mb-2.5 flex items-center gap-2">
+      <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <button
           type="button"
           onClick={() => onStep(-1)}

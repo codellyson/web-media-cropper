@@ -27,8 +27,19 @@ import {
 import { useEngineStatus } from '@/hooks/useEngineStatus'
 import { downloadBlob, swapExtension } from '@/lib/download'
 import { PlatformIcon } from '@/components/PlatformIcon'
+import {
+  MobileAspectStrip,
+  type MobileAspectEntry,
+} from '@/components/editor/MobileAspectStrip'
 
 const FRAME_STEP_MS = 1000 / 30
+
+const VIDEO_CROP_ASPECT_ENTRIES: MobileAspectEntry[] = VIDEO_PRESETS.map((p) => ({
+  id: p.id,
+  platform: p.platform,
+  display: p.short ?? p.name,
+  ratio: videoRatioLabel(p),
+}))
 
 type Capture = {
   id: number
@@ -388,10 +399,76 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
     }
   }
 
+  // Mobile bottom-bar primary action — varies by tool. Audio mode has multiple
+  // actions (extract / mute / replace) so we leave it empty there; the user
+  // opens the Settings sheet to pick.
+  const mobileActionClass =
+    'inline-flex h-10 items-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40'
+  let mobileAction: React.ReactNode = null
+  if (mode === 'trim') {
+    const span = trimOut - trimIn
+    const disabled =
+      trimming ||
+      engine.kind === 'loading' ||
+      span < 100 ||
+      span >= video.durationMs
+    mobileAction = (
+      <button type="button" onClick={exportTrim} disabled={disabled} className={mobileActionClass}>
+        {trimming ? 'Trimming…' : 'Export trim'}
+      </button>
+    )
+  } else if (mode === 'crop') {
+    const disabled = cropping || engine.kind === 'loading'
+    mobileAction = (
+      <button type="button" onClick={exportCrop} disabled={disabled} className={mobileActionClass}>
+        {cropping ? 'Encoding…' : 'Export crop'}
+      </button>
+    )
+  } else if (mode === 'compress') {
+    const disabled = compressing || engine.kind === 'loading' || !targetBytes
+    mobileAction = (
+      <button type="button" onClick={exportCompress} disabled={disabled} className={mobileActionClass}>
+        {compressing ? 'Compressing…' : 'Compress'}
+      </button>
+    )
+  } else if (mode === 'gif') {
+    const span = gifOut - gifIn
+    const disabled =
+      gifWorking ||
+      engine.kind === 'loading' ||
+      span < 100 ||
+      span >= video.durationMs
+    mobileAction = (
+      <button type="button" onClick={exportGif} disabled={disabled} className={mobileActionClass}>
+        {gifWorking ? 'Rendering…' : 'Export GIF'}
+      </button>
+    )
+  } else if (mode === 'frame') {
+    const disabled = captures.length === 0 || engine.kind === 'loading'
+    mobileAction = (
+      <button type="button" onClick={exportAll} disabled={disabled} className={mobileActionClass}>
+        Export {captures.length > 0 ? captures.length : ''} {captures.length === 1 ? 'frame' : 'frames'}
+      </button>
+    )
+  }
+
   return (
     <EditorShell
       fileName={video.name}
       toolbarMode="video"
+      mobileAction={mobileAction}
+      mobileAspects={
+        mode === 'crop' ? (
+          <MobileAspectStrip
+            entries={VIDEO_CROP_ASPECT_ENTRIES}
+            value={cropPresetId}
+            onSelect={(id) => {
+              setCropPresetId(id)
+              setCropOffset({ dx: 0, dy: 0 })
+            }}
+          />
+        ) : undefined
+      }
       activeTool={
         mode === 'trim'
           ? 'video-trim'
@@ -535,11 +612,7 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
               <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--ic-accent)' }} />
               Capture frame
             </button>
-          ) : (
-            <span className="font-mono-geist text-[11px] uppercase tracking-wider text-[var(--ic-ink-4)]">
-              Trim mode
-            </span>
-          )
+          ) : null
         }
         trim={
           mode === 'trim'
@@ -829,25 +902,49 @@ function VideoCanvas({
   const aspect = video.width / video.height
   const MAX_W = 720
   const MAX_H = 380
-  let w: number, h: number
-  if (aspect >= 1) {
-    w = MAX_W
-    h = w / aspect
-    if (h > MAX_H) {
-      h = MAX_H
-      w = h * aspect
+  const PAD_X = 48 // p-6 left + right
+  const PAD_Y = 72 // pt-12 (48) + pb-6 (24)
+  const stageRef = useRef<HTMLDivElement>(null)
+  const [frame, setFrame] = useState<{ w: number; h: number }>({ w: MAX_W, h: MAX_H })
+
+  useEffect(() => {
+    const el = stageRef.current
+    if (!el) return
+    const compute = () => {
+      const rect = el.getBoundingClientRect()
+      if (rect.width <= 0 || rect.height <= 0) return
+      const availW = Math.max(120, rect.width - PAD_X)
+      const availH = Math.max(120, rect.height - PAD_Y)
+      const capW = Math.min(MAX_W, availW)
+      const capH = Math.min(MAX_H, availH)
+      let w: number, h: number
+      if (aspect >= 1) {
+        w = capW
+        h = w / aspect
+        if (h > capH) {
+          h = capH
+          w = h * aspect
+        }
+      } else {
+        h = capH
+        w = h * aspect
+        if (w > capW) {
+          w = capW
+          h = w / aspect
+        }
+      }
+      setFrame({ w: Math.round(w), h: Math.round(h) })
     }
-  } else {
-    h = MAX_H
-    w = h * aspect
-    if (w > MAX_W) {
-      w = MAX_W
-      h = w / aspect
-    }
-  }
+    compute()
+    const obs = new ResizeObserver(compute)
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [aspect])
+
   const checker = `linear-gradient(45deg, var(--ic-bg-3) 25%, transparent 25%), linear-gradient(-45deg, var(--ic-bg-3) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--ic-bg-3) 75%), linear-gradient(-45deg, transparent 75%, var(--ic-bg-3) 75%)`
   return (
     <div
+      ref={stageRef}
       className="relative flex flex-1 flex-col overflow-hidden"
       style={{
         background: checker,
@@ -868,8 +965,8 @@ function VideoCanvas({
         <div
           className="relative rounded-md"
           style={{
-            width: `${w}px`,
-            height: `${h}px`,
+            width: `${frame.w}px`,
+            height: `${frame.h}px`,
             boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05)',
           }}
         >
@@ -884,8 +981,8 @@ function VideoCanvas({
           />
           {cropAspect != null && (
             <CropOverlay
-              frameW={w}
-              frameH={h}
+              frameW={frame.w}
+              frameH={frame.h}
               sourceWidth={video.width}
               sourceHeight={video.height}
               cropAspect={cropAspect}
@@ -1047,15 +1144,22 @@ function CropOverlay({
   const left = (frameW - cropW) / 2 + dxSrc * scale
   const top = (frameH - cropH) / 2 + dySrc * scale
 
-  const startDrag = (e: React.MouseEvent) => {
+  const startDrag = (e: React.PointerEvent) => {
     if (!onOffsetChange) return
     e.preventDefault()
     e.stopPropagation()
+    const target = e.currentTarget
+    const pointerId = e.pointerId
+    try {
+      target.setPointerCapture(pointerId)
+    } catch {
+      // some browsers/test envs may throw — non-fatal
+    }
     const startX = e.clientX
     const startY = e.clientY
     const startDx = dxSrc
     const startDy = dySrc
-    const move = (ev: MouseEvent) => {
+    const move = (ev: PointerEvent) => {
       const ddx = (ev.clientX - startX) / scale
       const ddy = (ev.clientY - startY) / scale
       onOffsetChange({
@@ -1064,11 +1168,18 @@ function CropOverlay({
       })
     }
     const up = () => {
-      window.removeEventListener('mousemove', move)
-      window.removeEventListener('mouseup', up)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      try {
+        target.releasePointerCapture(pointerId)
+      } catch {
+        // non-fatal
+      }
     }
-    window.addEventListener('mousemove', move)
-    window.addEventListener('mouseup', up)
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
   }
 
   return (
@@ -1076,7 +1187,7 @@ function CropOverlay({
       {/* dim outside */}
       <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.55)" }} />
       <div
-        onMouseDown={startDrag}
+        onPointerDown={startDrag}
         role={onOffsetChange ? 'slider' : undefined}
         aria-label={onOffsetChange ? 'Crop position — drag to reframe' : undefined}
         tabIndex={onOffsetChange ? 0 : undefined}
@@ -1097,7 +1208,7 @@ function CropOverlay({
             onOffsetChange({ dx: dxSrc, dy: Math.min(maxDySrc, dySrc + step) })
           }
         }}
-        className={onOffsetChange ? 'pointer-events-auto absolute cursor-move outline-none focus-visible:ring-2 focus-visible:ring-[var(--ic-accent)]' : 'absolute'}
+        className={onOffsetChange ? 'pointer-events-auto absolute cursor-move touch-none select-none outline-none focus-visible:ring-2 focus-visible:ring-[var(--ic-accent)]' : 'absolute'}
         style={{
           left: `${left}px`,
           top: `${top}px`,

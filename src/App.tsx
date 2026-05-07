@@ -10,6 +10,7 @@ import { CompressView } from '@/components/CompressView'
 import { VideoView } from '@/components/VideoView'
 import { BatchView } from '@/components/BatchView'
 import { FormatRail } from '@/components/editor/FormatRail'
+import { MobileAspectStrip, type MobileAspectEntry } from '@/components/editor/MobileAspectStrip'
 import { PreviewCanvas } from '@/components/editor/PreviewCanvas'
 import { LandingHero } from '@/components/LandingHero'
 import { HowItWorks } from '@/components/HowItWorks'
@@ -29,6 +30,18 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { track } from '@/lib/analytics'
 
 const DEFAULT_PRESET = PRESETS.find((p) => p.id === 'yt-thumbnail')!
+
+const MOBILE_ASPECT_ENTRIES: MobileAspectEntry[] = [
+  { id: 'ig-story', platform: 'Instagram', display: 'IG Reel', ratio: '9:16' },
+  { id: 'tt-video', platform: 'TikTok', display: 'TikTok', ratio: '9:16' },
+  { id: 'yt-shorts', platform: 'YouTube', display: 'YT Shorts', ratio: '9:16' },
+  { id: 'ig-portrait', platform: 'Instagram', display: 'IG Portrait', ratio: '4:5' },
+  { id: 'ig-square', platform: 'Instagram', display: 'IG Square', ratio: '1:1' },
+  { id: 'yt-thumbnail', platform: 'YouTube', display: 'YT Thumb', ratio: '16:9' },
+  { id: 'x-post', platform: 'X', display: 'X Post', ratio: '16:9' },
+  { id: 'li-post', platform: 'LinkedIn', display: 'LinkedIn', ratio: '1.91:1' },
+  { id: 'og', platform: 'Web', display: 'OG', ratio: '1.91:1' },
+]
 
 function readInitialPreset(): string {
   if (typeof window === 'undefined') return DEFAULT_PRESET.id
@@ -378,6 +391,31 @@ export default function App() {
                 />
               </div>
             </>
+          }
+          mobileAction={
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={!croppedBlob.blob}
+              className="inline-flex h-10 items-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Download
+              {target && (
+                <span className="font-mono-geist text-[10.5px] uppercase tracking-wider opacity-60">
+                  {target.width}×{target.height}
+                </span>
+              )}
+            </button>
+          }
+          mobileAspects={
+            <MobileAspectStrip
+              entries={MOBILE_ASPECT_ENTRIES}
+              value={presetId}
+              onSelect={(id) => {
+                const p = PRESETS.find((pp) => pp.id === id)
+                if (p) handlePreset(p)
+              }}
+            />
           }
         >
           <PreviewCanvas
