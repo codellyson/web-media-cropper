@@ -72,6 +72,7 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
   const [trimAccurate, setTrimAccurate] = useState(false)
   const [cropPresetId, setCropPresetId] = useState<string>(VIDEO_PRESETS[0].id)
   const [cropOffset, setCropOffset] = useState<{ dx: number; dy: number }>({ dx: 0, dy: 0 })
+  const [cropFillMode, setCropFillMode] = useState<'crop' | 'fit'>('crop')
   const [cropping, setCropping] = useState(false)
   const [compressTarget, setCompressTarget] = useState('10 MB')
   const [compressing, setCompressing] = useState(false)
@@ -343,7 +344,8 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
   const exportCrop = async () => {
     if (cropping) return
     setCropping(true)
-    setProgress({ label: 'Cropping…', pct: 0 })
+    const label = cropFillMode === 'fit' ? 'Fitting…' : 'Cropping…'
+    setProgress({ label, pct: 0 })
     try {
       const aspect = cropPreset.width / cropPreset.height
       const baseBox = centeredCropBox(video.width, video.height, aspect)
@@ -352,16 +354,25 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
       const dx = Math.max(-maxDx, Math.min(maxDx, cropOffset.dx))
       const dy = Math.max(-maxDy, Math.min(maxDy, cropOffset.dy))
       const box = { x: Math.round(baseBox.x + dx), y: Math.round(baseBox.y + dy), w: baseBox.w, h: baseBox.h }
-      const output = outputForCrop(cropPreset, box.w, box.h)
+      // For Fit, render at the preset's full dimensions; the contained-source +
+      // blurred-bleed pipeline doesn't downscale based on source crop.
+      const output =
+        cropFillMode === 'fit'
+          ? { width: cropPreset.width, height: cropPreset.height }
+          : outputForCrop(cropPreset, box.w, box.h)
       const out = await cropEncodeVideo(
         video.sourceBlob,
         video.name,
         box,
         { width: output.width, height: output.height },
-        { onProgress: (pct) => setProgress({ label: 'Cropping…', pct }) },
+        {
+          fillMode: cropFillMode,
+          onProgress: (pct) => setProgress({ label, pct }),
+        },
       )
       const base = video.name.replace(/\.[^.]+$/, '')
-      downloadBlob(out, `${base}-${cropPreset.id}-${output.width}x${output.height}.mp4`)
+      const suffix = cropFillMode === 'fit' ? '-fit' : ''
+      downloadBlob(out, `${base}-${cropPreset.id}-${output.width}x${output.height}${suffix}.mp4`)
     } catch (err) {
       console.error('[exportCrop]', err)
     } finally {
@@ -421,7 +432,7 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
     const disabled = cropping || engine.kind === 'loading'
     mobileAction = (
       <button type="button" onClick={exportCrop} disabled={disabled} className={mobileActionClass}>
-        {cropping ? 'Encoding…' : 'Export crop'}
+        {cropping ? 'Encoding…' : cropFillMode === 'fit' ? 'Export fit' : 'Export crop'}
       </button>
     )
   } else if (mode === 'compress') {
@@ -547,6 +558,11 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
             onResetOffset={() => setCropOffset({ dx: 0, dy: 0 })}
             sourceWidth={video.width}
             sourceHeight={video.height}
+            fillMode={cropFillMode}
+            onFillModeChange={(m) => {
+              setCropFillMode(m)
+              if (m === 'fit') setCropOffset({ dx: 0, dy: 0 })
+            }}
             engine={engine}
             cropping={cropping}
             onExport={exportCrop}
@@ -638,7 +654,8 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
         cropAspect={mode === 'crop' ? cropPreset.width / cropPreset.height : undefined}
         cropLabel={mode === 'crop' ? `${cropPreset.short ?? cropPreset.name} · ${cropPreset.width}×${cropPreset.height}` : undefined}
         cropOffset={mode === 'crop' ? cropOffset : undefined}
-        onCropOffsetChange={mode === 'crop' ? setCropOffset : undefined}
+        onCropOffsetChange={mode === 'crop' && cropFillMode === 'crop' ? setCropOffset : undefined}
+        cropFillMode={mode === 'crop' ? cropFillMode : undefined}
         encodeProgress={progress}
       />
     </EditorShell>
@@ -876,6 +893,7 @@ type CanvasProps = {
   cropLabel?: string
   cropOffset?: { dx: number; dy: number }
   onCropOffsetChange?: (next: { dx: number; dy: number }) => void
+  cropFillMode?: 'crop' | 'fit'
   encodeProgress?: { label: string; pct: number } | null
 }
 
@@ -897,9 +915,14 @@ function VideoCanvas({
   cropLabel,
   cropOffset,
   onCropOffsetChange,
+  cropFillMode,
   encodeProgress,
 }: CanvasProps) {
-  const aspect = video.width / video.height
+  const sourceAspect = video.width / video.height
+  // In Fit mode the stage frame matches the *target* aspect (the user is
+  // previewing the output, not the source).
+  const fitting = cropFillMode === 'fit' && cropAspect != null
+  const aspect = fitting ? cropAspect : sourceAspect
   const MAX_W = 720
   const MAX_H = 380
   const PAD_X = 48 // p-6 left + right
@@ -973,13 +996,32 @@ function VideoCanvas({
           <span className="absolute left-1/2 -top-9 -translate-x-1/2 whitespace-nowrap rounded-md border border-[var(--ic-line)] bg-[var(--ic-card)] px-2.5 py-1 font-mono-geist text-[11px] text-[var(--ic-ink-2)] shadow-[var(--ic-shadow-sm)]">
             {video.name}
           </span>
-          <video
-            ref={videoRef}
-            src={objectUrl}
-            playsInline
-            className="block h-full w-full rounded-md bg-black"
-          />
-          {cropAspect != null && (
+          {/* Inner clipping wrapper so the Fit-mode blurred backdrop's
+              transform: scale(1.08) doesn't bleed past the rounded corners.
+              Stable across Crop/Fit toggles — the <video> never moves DOM
+              parent, so it doesn't remount. */}
+          <div className="absolute inset-0 overflow-hidden rounded-md">
+            <FitBackdrop
+              videoRef={videoRef}
+              frameW={frame.w}
+              frameH={frame.h}
+              visible={fitting}
+            />
+            {fitting && (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0"
+                style={{ background: 'rgba(0,0,0,0.18)' }}
+              />
+            )}
+            <video
+              ref={videoRef}
+              src={objectUrl}
+              playsInline
+              className={`relative block h-full w-full ${fitting ? 'bg-transparent object-contain' : 'bg-black'}`}
+            />
+          </div>
+          {cropAspect != null && !fitting && (
             <CropOverlay
               frameW={frame.w}
               frameH={frame.h}
@@ -990,6 +1032,11 @@ function VideoCanvas({
               offset={cropOffset ?? { dx: 0, dy: 0 }}
               onOffsetChange={onCropOffsetChange}
             />
+          )}
+          {fitting && cropLabel && (
+            <span className="pointer-events-none absolute left-2 top-2 z-[5] rounded-md border border-[var(--ic-line)] bg-[var(--ic-card)]/90 px-2 py-1 font-mono-geist text-[11px] text-[var(--ic-ink-2)] shadow-[var(--ic-shadow-sm)] backdrop-blur-sm">
+              {cropLabel}
+            </span>
           )}
         </div>
       </div>
@@ -1088,6 +1135,109 @@ function RailHeader({ children }: { children: React.ReactNode }) {
     <div className="px-0.5 py-1 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--ic-ink-4)]">
       {children}
     </div>
+  )
+}
+
+/**
+ * Paints the foreground <video> element into a canvas with cover-fit math, then
+ * applies CSS blur + brightness to mimic the export's `gblur=sigma=20` +
+ * `eq=brightness=-0.1` chain. The canvas overflows the frame slightly via
+ * transform: scale so the blur halo doesn't show transparent edges.
+ *
+ * Always mounted (controlled by `visible`) so the foreground <video> element's
+ * ref and playback state stay stable across Fit toggles.
+ */
+function FitBackdrop({
+  videoRef,
+  frameW,
+  frameH,
+  visible,
+}: {
+  videoRef: React.RefObject<HTMLVideoElement | null>
+  frameW: number
+  frameH: number
+  visible: boolean
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const rafRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!visible) return
+    const canvas = canvasRef.current
+    const vid = videoRef.current
+    if (!canvas || !vid) return
+
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = Math.max(40, Math.round(frameW * dpr))
+    canvas.height = Math.max(40, Math.round(frameH * dpr))
+
+    const draw = () => {
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      const vw = vid.videoWidth
+      const vh = vid.videoHeight
+      if (vw === 0 || vh === 0 || vid.readyState < 2) return
+      const cw = canvas.width
+      const ch = canvas.height
+      const scale = Math.max(cw / vw, ch / vh)
+      const w = vw * scale
+      const h = vh * scale
+      const x = (cw - w) / 2
+      const y = (ch - h) / 2
+      ctx.drawImage(vid, x, y, w, h)
+    }
+
+    const tick = () => {
+      draw()
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    const stop = () => {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
+    }
+
+    if (!vid.paused) tick()
+    else draw()
+
+    const onPlay = () => {
+      if (rafRef.current == null) tick()
+    }
+    const onPause = () => {
+      stop()
+      draw()
+    }
+    const onSeeked = () => draw()
+    const onLoaded = () => draw()
+    vid.addEventListener('play', onPlay)
+    vid.addEventListener('pause', onPause)
+    vid.addEventListener('seeked', onSeeked)
+    vid.addEventListener('loadeddata', onLoaded)
+
+    return () => {
+      stop()
+      vid.removeEventListener('play', onPlay)
+      vid.removeEventListener('pause', onPause)
+      vid.removeEventListener('seeked', onSeeked)
+      vid.removeEventListener('loadeddata', onLoaded)
+    }
+  }, [visible, frameW, frameH, videoRef])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-hidden
+      className="absolute inset-0 h-full w-full rounded-md"
+      style={{
+        display: visible ? 'block' : 'none',
+        // Slight upscale so the blur halo doesn't reveal transparent edges
+        // when clipped by the parent's rounded-md.
+        transform: 'scale(1.08)',
+        filter: 'blur(20px)',
+        background: '#000',
+      }}
+    />
   )
 }
 
@@ -1267,6 +1417,8 @@ function CropRail({
   onResetOffset,
   sourceWidth,
   sourceHeight,
+  fillMode,
+  onFillModeChange,
   engine,
   cropping,
   onExport,
@@ -1277,10 +1429,13 @@ function CropRail({
   onResetOffset: () => void
   sourceWidth: number
   sourceHeight: number
+  fillMode: 'crop' | 'fit'
+  onFillModeChange: (m: 'crop' | 'fit') => void
   engine: ReturnType<typeof useEngineStatus>
   cropping: boolean
   onExport: () => void
 }) {
+  const isFit = fillMode === 'fit'
   const active = VIDEO_PRESETS.find((p) => p.id === presetId) ?? VIDEO_PRESETS[0]
   const aspect = active.width / active.height
   const baseBox = centeredCropBox(sourceWidth, sourceHeight, aspect)
@@ -1311,6 +1466,35 @@ function CropRail({
 
   return (
     <>
+      <RailHeader>Fit</RailHeader>
+      <div
+        role="radiogroup"
+        aria-label="Fill mode"
+        className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+      >
+        {(['crop', 'fit'] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            role="radio"
+            aria-checked={fillMode === m}
+            onClick={() => onFillModeChange(m)}
+            className={`h-7 flex-1 rounded-full px-2.5 transition ${
+              fillMode === m
+                ? 'bg-[var(--ic-ink)] text-[var(--ic-bg)]'
+                : 'text-[var(--ic-ink-3)] hover:text-[var(--ic-ink)]'
+            }`}
+          >
+            {m === 'crop' ? 'Crop' : 'Fit'}
+          </button>
+        ))}
+      </div>
+      <p className="-mt-1 text-[11px] leading-snug text-[var(--ic-ink-4)]">
+        {isFit
+          ? 'Source contained inside the frame · blurred bleed fills the rest.'
+          : 'Subject-aware crop fills the frame.'}
+      </p>
+
       <div className="flex flex-col gap-4">
         {groups.map((group) => (
           <div key={group.id} className="flex flex-col gap-1">
@@ -1356,14 +1540,23 @@ function CropRail({
         ))}
       </div>
 
-      <RailHeader>Crop region</RailHeader>
+      <RailHeader>{isFit ? 'Output' : 'Crop region'}</RailHeader>
       <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] p-3">
-        <Stat label="Output" value={`${output.width}×${output.height}`} />
-        <Stat label="Source crop" value={`${box.w}×${box.h}`} />
-        <Stat label="Offset" value={`${box.x},${box.y}`} />
+        <Stat
+          label="Output"
+          value={
+            isFit ? `${active.width}×${active.height}` : `${output.width}×${output.height}`
+          }
+        />
+        {!isFit && (
+          <>
+            <Stat label="Source crop" value={`${box.w}×${box.h}`} />
+            <Stat label="Offset" value={`${box.x},${box.y}`} />
+          </>
+        )}
       </div>
 
-      {isOffset && (
+      {!isFit && isOffset && (
         <button
           type="button"
           onClick={onResetOffset}
@@ -1374,7 +1567,9 @@ function CropRail({
       )}
 
       <p className="px-1 text-[11px] leading-relaxed text-[var(--ic-ink-4)]">
-        Drag inside the frame to reposition. Audio kept as-is.
+        {isFit
+          ? 'Whole source kept · blurred bleed fills the bars. Audio kept as-is.'
+          : 'Drag inside the frame to reposition. Audio kept as-is.'}
       </p>
 
       <div className="mt-auto flex flex-col gap-2">
@@ -1384,7 +1579,13 @@ function CropRail({
           disabled={cropping || engine.kind === "loading"}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {cropping ? "Encoding…" : engine.kind === "loading" ? "Loading engine…" : "Export crop "}
+          {cropping
+            ? 'Encoding…'
+            : engine.kind === 'loading'
+              ? 'Loading engine…'
+              : isFit
+                ? 'Export fit'
+                : 'Export crop'}
         </button>
         <p className="text-center font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)]">
           100% in your browser

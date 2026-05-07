@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { cropInWorker } from '@/lib/cropClient'
+import { cropInWorker, type FillMode } from '@/lib/cropClient'
 import type { CropBox, OutputFormat, OutputSize } from '@/lib/crop'
 
 type Args = {
@@ -9,6 +9,7 @@ type Args = {
   output: OutputSize | null
   format: OutputFormat
   quality: number
+  fillMode?: FillMode
   debounceMs?: number
 }
 
@@ -25,12 +26,14 @@ export function useCroppedBlob({
   output,
   format,
   quality,
+  fillMode = 'crop',
   debounceMs = 250,
 }: Args): Result {
   const [state, setState] = useState<Result>({ blob: null, loading: false, error: null })
 
   useEffect(() => {
-    if (!sourceBlob || !box || !output) {
+    // Crop mode needs a box; fit mode renders the whole source so a box is optional.
+    if (!sourceBlob || !output || (fillMode === 'crop' && !box)) {
       setState({ blob: null, loading: false, error: null })
       return
     }
@@ -38,16 +41,21 @@ export function useCroppedBlob({
     setState((prev) => ({ ...prev, loading: true, error: null }))
     const timer = setTimeout(async () => {
       try {
+        const safeBox: CropBox = box ?? { x: 0, y: 0, width: 1, height: 1 }
         const fullResBox: CropBox =
           scale < 1
             ? {
-                x: box.x / scale,
-                y: box.y / scale,
-                width: box.width / scale,
-                height: box.height / scale,
+                x: safeBox.x / scale,
+                y: safeBox.y / scale,
+                width: safeBox.width / scale,
+                height: safeBox.height / scale,
               }
-            : box
-        const blob = await cropInWorker(sourceBlob, fullResBox, output, { format, quality })
+            : safeBox
+        const blob = await cropInWorker(sourceBlob, fullResBox, output, {
+          format,
+          quality,
+          fillMode,
+        })
         if (!cancelled) setState({ blob, loading: false, error: null })
       } catch (err) {
         if (!cancelled) {
@@ -74,6 +82,7 @@ export function useCroppedBlob({
     output?.height,
     format,
     quality,
+    fillMode,
     debounceMs,
   ])
 

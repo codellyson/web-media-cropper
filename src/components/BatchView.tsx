@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { runBatch, type BatchProgress } from '@/lib/batch'
 import { PRESETS, type Preset } from '@/lib/presets'
 import type { OutputFormat } from '@/lib/crop'
+import type { FillMode } from '@/lib/cropClient'
 import { downloadBlob } from '@/lib/download'
 import {
   extractVideoFirstFrame,
@@ -33,6 +34,7 @@ type StoredSettings = {
   selected?: string[]
   format?: OutputFormat
   quality?: number
+  fillMode?: FillMode
 }
 
 type VideoMeta = { durationMs: number }
@@ -99,6 +101,10 @@ export function BatchView() {
     const q = loadStoredSettings()?.quality
     return typeof q === 'number' && q >= 0.5 && q <= 1 ? q : 0.85
   })
+  const [fillMode, setFillMode] = useState<FillMode>(() => {
+    const m = loadStoredSettings()?.fillMode
+    return m === 'fit' ? 'fit' : 'crop'
+  })
   const [progress, setProgress] = useState<BatchProgress | null>(null)
   const [running, setRunning] = useState(false)
   const [over, setOver] = useState(false)
@@ -113,12 +119,13 @@ export function BatchView() {
           selected: Array.from(selected),
           format,
           quality,
+          fillMode,
         }),
       )
     } catch {
       // ignore — quota or disabled storage is non-fatal
     }
-  }, [selected, format, quality])
+  }, [selected, format, quality, fillMode])
 
   // Track current files via ref so async video-thumbnail extraction can skip
   // setting state for files the user removed mid-flight.
@@ -244,6 +251,7 @@ export function BatchView() {
       const zip = await runBatch(files, presets, {
         format,
         quality,
+        fillMode,
         onProgress: (p) => setProgress(p),
       })
       downloadBlob(zip, `wmc-batch-${new Date().toISOString().slice(0, 10)}.zip`)
@@ -520,6 +528,34 @@ export function BatchView() {
         <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
           <div className="flex items-center gap-3">
             <span className="font-mono-geist text-[11px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)]">
+              Fill
+            </span>
+            <div
+              role="radiogroup"
+              aria-label="Fill mode"
+              className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+            >
+              {(['crop', 'fit'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={fillMode === m}
+                  onClick={() => setFillMode(m)}
+                  className={`h-7 rounded-full px-3 transition ${
+                    fillMode === m
+                      ? 'bg-[var(--ic-ink)] text-[var(--ic-bg)]'
+                      : 'text-[var(--ic-ink-3)] hover:text-[var(--ic-ink)]'
+                  }`}
+                >
+                  {m === 'crop' ? 'Crop' : 'Fit'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="font-mono-geist text-[11px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)]">
               {hasVideos ? 'Image format' : 'Format'}
             </span>
             <div
@@ -566,8 +602,13 @@ export function BatchView() {
             </div>
           )}
         </div>
+        <p className="mt-3 font-mono-geist text-[10.5px] uppercase tracking-[0.14em] text-[var(--ic-ink-4)]">
+          {fillMode === 'fit'
+            ? 'Source contained inside the frame · blurred bleed fills the rest.'
+            : 'Subject-aware crop fills each frame.'}
+        </p>
         {hasVideos && (
-          <p className="mt-3 font-mono-geist text-[10.5px] uppercase tracking-[0.14em] text-[var(--ic-ink-4)]">
+          <p className="mt-1 font-mono-geist text-[10.5px] uppercase tracking-[0.14em] text-[var(--ic-ink-4)]">
             Videos encode to MP4 H.264 at CRF 23 · audio passes through where possible · 60s cap.
           </p>
         )}

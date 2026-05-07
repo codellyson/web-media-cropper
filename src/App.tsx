@@ -12,6 +12,7 @@ import { BatchView } from '@/components/BatchView'
 import { FormatRail } from '@/components/editor/FormatRail'
 import { MobileAspectStrip, type MobileAspectEntry } from '@/components/editor/MobileAspectStrip'
 import { PreviewCanvas } from '@/components/editor/PreviewCanvas'
+import { FitPreview } from '@/components/editor/FitPreview'
 import { LandingHero } from '@/components/LandingHero'
 import { HowItWorks } from '@/components/HowItWorks'
 import { FormatMarquee } from '@/components/FormatMarquee'
@@ -20,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Eye, EyeOff } from 'lucide-react'
 import { useImageSource } from '@/hooks/useImageSource'
 import { type CropBox, type OutputFormat } from '@/lib/crop'
+import { type FillMode } from '@/lib/cropClient'
 import { downloadBlob, swapExtension } from '@/lib/download'
 import { extractExif, insertExifIntoJpeg, looksLikeJpeg } from '@/lib/exif'
 import { PRESETS, type Preset } from '@/lib/presets'
@@ -98,6 +100,7 @@ export default function App() {
   const [subjectLock, setSubjectLock] = useState(78)
   const [padding, setPadding] = useState(12)
   const [holdOnFaces, setHoldOnFaces] = useState(true)
+  const [fillMode, setFillMode] = useState<FillMode>('crop')
 
   const focalPoint = useMemo<FocalPoint | null>(() => {
     if (!detection) return null
@@ -173,6 +176,7 @@ export default function App() {
     output: target,
     format,
     quality,
+    fillMode,
   })
 
   const handleDownload = async () => {
@@ -355,6 +359,8 @@ export default function App() {
           }
           rightRail={
             <RailRight
+              fillMode={fillMode}
+              onFillModeChange={setFillMode}
               subjectLock={subjectLock}
               onSubjectLockChange={setSubjectLock}
               padding={padding}
@@ -427,7 +433,14 @@ export default function App() {
                 : `${state.image.width}×${state.image.height}`
             }
           >
-            {focalPoint ? (
+            {fillMode === 'fit' ? (
+              <FitPreview
+                imageUrl={state.objectUrl}
+                sourceWidth={state.image.width}
+                sourceHeight={state.image.height}
+                aspect={aspect}
+              />
+            ) : focalPoint ? (
               <>
                 <CropStage
                   imageUrl={state.objectUrl}

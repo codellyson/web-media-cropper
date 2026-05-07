@@ -464,13 +464,19 @@ export async function cropEncodeVideo(
   name: string,
   crop: VideoCropBox,
   output: { width: number; height: number },
-  options: { crf?: number; onProgress?: ProgressCallback } = {},
+  options: {
+    crf?: number
+    onProgress?: ProgressCallback
+    fillMode?: 'crop' | 'fit'
+    blurSigma?: number
+  } = {},
 ): Promise<Blob> {
   const ff = await getFFmpeg()
   const ext = extOf(blob.type, name)
   const inputName = `in.${ext}`
   const outputName = 'out.mp4'
   const crf = options.crf ?? 23
+  const fillMode = options.fillMode ?? 'crop'
 
   const ix = Math.max(0, Math.round(crop.x))
   const iy = Math.max(0, Math.round(crop.y))
@@ -479,25 +485,60 @@ export async function cropEncodeVideo(
   const ow = Math.max(2, Math.round(output.width / 2) * 2)
   const oh = Math.max(2, Math.round(output.height / 2) * 2)
 
+  // Fit mode: split source into two paths — a cover-fit Gaussian-blurred backdrop
+  // and a contain-fit foreground — then overlay the foreground centered on the backdrop.
+  // The crop coordinates are unused; the whole source is rendered.
+  // Sigma 20 roughly matches the canvas blur(40px) used in the image preview.
+  const blurSigma = Math.max(0, Math.min(40, options.blurSigma ?? 20))
+  const fitFilter =
+    `[0:v]split=2[bg][fg];` +
+    `[bg]scale=${ow}:${oh}:force_original_aspect_ratio=increase,crop=${ow}:${oh},` +
+    `gblur=sigma=${blurSigma},eq=brightness=-0.1[bgblur];` +
+    `[fg]scale=${ow}:${oh}:force_original_aspect_ratio=decrease:force_divisible_by=2[fitv];` +
+    `[bgblur][fitv]overlay=(W-w)/2:(H-h)/2,format=yuv420p[outv]`
+
+  const args: string[] =
+    fillMode === 'fit'
+      ? [
+          '-i',
+          inputName,
+          '-filter_complex',
+          fitFilter,
+          '-map',
+          '[outv]',
+          '-map',
+          '0:a?',
+          '-c:v',
+          'libx264',
+          '-preset',
+          'veryfast',
+          '-crf',
+          String(crf),
+          '-movflags',
+          '+faststart',
+          outputName,
+        ]
+      : [
+          '-i',
+          inputName,
+          '-vf',
+          `crop=${iw}:${ih}:${ix}:${iy},scale=${ow}:${oh}`,
+          '-c:v',
+          'libx264',
+          '-preset',
+          'veryfast',
+          '-crf',
+          String(crf),
+          '-movflags',
+          '+faststart',
+          outputName,
+        ]
+
   const buf = new Uint8Array(await blob.arrayBuffer())
   await ff.writeFile(inputName, buf)
   try {
     await withProgress(ff, options.onProgress, async () => {
-      await runEncodeWithAudioFallback(ff, [
-        '-i',
-        inputName,
-        '-vf',
-        `crop=${iw}:${ih}:${ix}:${iy},scale=${ow}:${oh}`,
-        '-c:v',
-        'libx264',
-        '-preset',
-        'veryfast',
-        '-crf',
-        String(crf),
-        '-movflags',
-        '+faststart',
-        outputName,
-      ])
+      await runEncodeWithAudioFallback(ff, args)
     })
     const data = (await ff.readFile(outputName)) as Uint8Array
     const out = new Uint8Array(data.byteLength)

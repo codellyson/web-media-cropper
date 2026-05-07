@@ -26,11 +26,13 @@ function getWorker(): Worker {
   return worker
 }
 
+export type FillMode = 'crop' | 'fit'
+
 export function cropInWorker(
   blob: Blob,
   box: CropBox,
   output: OutputSize,
-  options: { format: OutputFormat; quality: number },
+  options: { format: OutputFormat; quality: number; fillMode?: FillMode; blurPx?: number },
 ): Promise<Blob> {
   const id = nextId++
   const req: WorkerCropRequest = {
@@ -40,6 +42,8 @@ export function cropInWorker(
     output,
     format: options.format,
     quality: options.quality,
+    fillMode: options.fillMode,
+    blurPx: options.blurPx,
   }
   return new Promise<Blob>((resolve, reject) => {
     pending.set(id, { resolve, reject })

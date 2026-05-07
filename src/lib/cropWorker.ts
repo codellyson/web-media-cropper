@@ -8,6 +8,8 @@ export type WorkerCropRequest = {
   output: { width: number; height: number }
   format: 'png' | 'jpeg' | 'webp' | 'avif'
   quality: number
+  fillMode?: 'crop' | 'fit'
+  blurPx?: number
 }
 
 export type WorkerCropResponse =
@@ -31,6 +33,75 @@ function mimeFor(format: WorkerCropRequest['format']): string {
   return 'image/webp'
 }
 
+async function renderFit(
+  req: WorkerCropRequest,
+  outW: number,
+  outH: number,
+  mime: string,
+  encodeQuality: number | undefined,
+): Promise<Blob> {
+  // Fit mode: full source contained inside target, blurred upscale fills the bleed.
+  // Decode the full source. Cap pixels at SAFE_FIT_PIXELS so giant images don't OOM the worker.
+  const SAFE_FIT_PIXELS = 16_000_000
+  let bitmap: ImageBitmap
+  // First decode at native size to read dims, then redecode scaled if needed.
+  const probe = await createImageBitmap(req.blob, { imageOrientation: 'from-image' })
+  const probePixels = probe.width * probe.height
+  if (probePixels > SAFE_FIT_PIXELS) {
+    const scale = Math.sqrt(SAFE_FIT_PIXELS / probePixels)
+    const dw = Math.max(outW, Math.round(probe.width * scale))
+    const dh = Math.max(outH, Math.round(probe.height * scale))
+    probe.close?.()
+    bitmap = await createImageBitmap(req.blob, {
+      imageOrientation: 'from-image',
+      resizeWidth: dw,
+      resizeHeight: dh,
+      resizeQuality: 'high',
+    })
+  } else {
+    bitmap = probe
+  }
+  try {
+    const sw = bitmap.width
+    const sh = bitmap.height
+
+    const canvas = new OffscreenCanvas(outW, outH)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('OffscreenCanvas 2D unavailable')
+
+    // 1. Cover-fit blurred backdrop. Scale the source to cover the canvas, draw with blur filter.
+    const coverScale = Math.max(outW / sw, outH / sh)
+    const bgW = sw * coverScale
+    const bgH = sh * coverScale
+    const bgX = (outW - bgW) / 2
+    const bgY = (outH - bgH) / 2
+    const blurPx = Math.max(0, Math.min(80, req.blurPx ?? 40))
+    ctx.filter = `blur(${blurPx}px)`
+    // Draw slightly oversized so the blur halo doesn't leak transparent edges.
+    const bleed = blurPx * 2
+    ctx.drawImage(bitmap, bgX - bleed, bgY - bleed, bgW + bleed * 2, bgH + bleed * 2)
+    ctx.filter = 'none'
+
+    // 2. Subtle dark scrim so subject pops against bright backdrops.
+    ctx.fillStyle = 'rgba(0,0,0,0.18)'
+    ctx.fillRect(0, 0, outW, outH)
+
+    // 3. Contain-fit source on top, centered.
+    const fitScale = Math.min(outW / sw, outH / sh)
+    const fgW = sw * fitScale
+    const fgH = sh * fitScale
+    const fgX = (outW - fgW) / 2
+    const fgY = (outH - fgH) / 2
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(bitmap, fgX, fgY, fgW, fgH)
+
+    return await canvas.convertToBlob({ type: mime, quality: encodeQuality })
+  } finally {
+    bitmap.close?.()
+  }
+}
+
 async function handle(req: WorkerCropRequest): Promise<Blob> {
   const sx = Math.max(0, Math.round(req.box.x))
   const sy = Math.max(0, Math.round(req.box.y))
@@ -40,6 +111,10 @@ async function handle(req: WorkerCropRequest): Promise<Blob> {
   const outH = Math.max(1, Math.round(req.output.height))
   const mime = mimeFor(req.format)
   const encodeQuality = req.format === 'png' ? undefined : req.quality
+
+  if (req.fillMode === 'fit') {
+    return renderFit(req, outW, outH, mime, encodeQuality)
+  }
 
   const SAFE_REGION_PIXELS = 24_000_000
   const regionPixels = sw * sh

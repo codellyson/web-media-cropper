@@ -1,5 +1,5 @@
 import JSZip from 'jszip'
-import { cropInWorker } from './cropClient'
+import { cropInWorker, type FillMode } from './cropClient'
 import type { OutputFormat } from './crop'
 import { loadImageFromFile } from './loadImage'
 import { extractVideoFirstFrame, looksLikeVideo } from './loadVideo'
@@ -40,6 +40,7 @@ export async function runBatch(
   options: {
     format: OutputFormat
     quality: number
+    fillMode?: FillMode
     onProgress?: (p: BatchProgress) => void
   },
 ): Promise<Blob> {
@@ -52,11 +53,21 @@ export async function runBatch(
   const total = items.length
   const zip = new JSZip()
   const imageExt = extFor(options.format)
+  const fillMode: FillMode = options.fillMode ?? 'crop'
 
   let i = 0
   for (const file of files) {
     if (looksLikeVideo(file, file.name)) {
-      i = await processVideoFile(file, presets, items, i, total, zip, options.onProgress)
+      i = await processVideoFile(
+        file,
+        presets,
+        items,
+        i,
+        total,
+        zip,
+        fillMode,
+        options.onProgress,
+      )
     } else {
       i = await processImageFile(
         file,
@@ -68,6 +79,7 @@ export async function runBatch(
         imageExt,
         options.format,
         options.quality,
+        fillMode,
         options.onProgress,
       )
     }
@@ -90,6 +102,7 @@ async function processImageFile(
   imageExt: string,
   format: OutputFormat,
   quality: number,
+  fillMode: FillMode,
   onProgress?: (p: BatchProgress) => void,
 ): Promise<number> {
   let i = startIdx
@@ -126,15 +139,27 @@ async function processImageFile(
     try {
       const aspect = preset.width / preset.height
       const box = cropBoxFromFocalPoint(dims.width, dims.height, aspect, focal)
-      const scale = Math.min(1, box.width / preset.width, box.height / preset.height)
-      const out = {
-        width: Math.round(preset.width * scale),
-        height: Math.round(preset.height * scale),
-      }
-      const blob = await cropInWorker(file, box, out, { format, quality })
+      // For Crop mode, downscale-cap to source pixels so we don't upscale a tight crop.
+      // For Fit mode the source is contained inside the full preset frame, so always
+      // produce the preset's intended dimensions.
+      const out =
+        fillMode === 'fit'
+          ? { width: preset.width, height: preset.height }
+          : (() => {
+              const scale = Math.min(1, box.width / preset.width, box.height / preset.height)
+              return {
+                width: Math.round(preset.width * scale),
+                height: Math.round(preset.height * scale),
+              }
+            })()
+      const blob = await cropInWorker(file, box, out, { format, quality, fillMode })
       const base = safeName(file.name.replace(/\.[^.]+$/, ''))
       const folder = zip.folder(base) ?? zip
-      folder.file(`${base}-${preset.id}-${out.width}x${out.height}.${imageExt}`, blob)
+      const suffix = fillMode === 'fit' ? '-fit' : ''
+      folder.file(
+        `${base}-${preset.id}-${out.width}x${out.height}${suffix}.${imageExt}`,
+        blob,
+      )
       item.status = 'done'
     } catch (err) {
       item.status = 'error'
@@ -153,6 +178,7 @@ async function processVideoFile(
   startIdx: number,
   total: number,
   zip: JSZip,
+  fillMode: FillMode,
   onProgress?: (p: BatchProgress) => void,
 ): Promise<number> {
   let i = startIdx
@@ -204,21 +230,29 @@ async function processVideoFile(
     try {
       const aspect = preset.width / preset.height
       const box = cropBoxFromFocalPoint(dims.width, dims.height, aspect, focal)
-      const scale = Math.min(1, box.width / preset.width, box.height / preset.height)
-      const out = {
-        width: Math.round(preset.width * scale),
-        height: Math.round(preset.height * scale),
-      }
+      // For Crop, downscale-cap to source pixels. For Fit, the whole source is
+      // contained inside the preset frame, so always render at full preset dims.
+      const out =
+        fillMode === 'fit'
+          ? { width: preset.width, height: preset.height }
+          : (() => {
+              const scale = Math.min(1, box.width / preset.width, box.height / preset.height)
+              return {
+                width: Math.round(preset.width * scale),
+                height: Math.round(preset.height * scale),
+              }
+            })()
       const outBlob = await cropEncodeVideo(
         file,
         file.name,
         { x: box.x, y: box.y, w: box.width, h: box.height },
         out,
-        { crf: VIDEO_CRF },
+        { crf: VIDEO_CRF, fillMode },
       )
       const base = safeName(file.name.replace(/\.[^.]+$/, ''))
       const folder = zip.folder(base) ?? zip
-      folder.file(`${base}-${preset.id}-${out.width}x${out.height}.mp4`, outBlob)
+      const suffix = fillMode === 'fit' ? '-fit' : ''
+      folder.file(`${base}-${preset.id}-${out.width}x${out.height}${suffix}.mp4`, outBlob)
       item.status = 'done'
     } catch (err) {
       item.status = 'error'

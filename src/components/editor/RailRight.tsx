@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { OutputFormat } from '@/lib/crop'
+import type { FillMode } from '@/lib/cropClient'
 import { avifEncodeSupported, formatBytes } from '@/lib/crop'
 import { RailSlider } from '@/components/editor/EditorShell'
 
@@ -10,6 +11,8 @@ const BASE_FORMATS: { value: OutputFormat; label: string }[] = [
 ]
 
 type RailRightProps = {
+  fillMode: FillMode
+  onFillModeChange: (m: FillMode) => void
   subjectLock: number
   onSubjectLockChange: (v: number) => void
   padding: number
@@ -31,6 +34,8 @@ type RailRightProps = {
 }
 
 export function RailRight({
+  fillMode,
+  onFillModeChange,
   subjectLock,
   onSubjectLockChange,
   padding,
@@ -50,6 +55,7 @@ export function RailRight({
   onPreserveExifChange,
   exifSupported,
 }: RailRightProps) {
+  const isFit = fillMode === 'fit'
   const showQuality = format !== 'png'
   const [avifOk, setAvifOk] = useState(false)
   useEffect(() => {
@@ -63,24 +69,56 @@ export function RailRight({
   const lockLabel = subjectLock > 75 ? 'strong' : subjectLock > 35 ? 'medium' : 'soft'
   return (
     <>
+      <RailHeader>Fit</RailHeader>
+      <div
+        role="radiogroup"
+        aria-label="Fill mode"
+        className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+      >
+        {(['crop', 'fit'] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            role="radio"
+            aria-checked={fillMode === m}
+            onClick={() => onFillModeChange(m)}
+            className={`h-7 flex-1 rounded-full px-2.5 transition ${
+              fillMode === m
+                ? 'bg-[var(--ic-ink)] text-[var(--ic-bg)]'
+                : 'text-[var(--ic-ink-3)] hover:text-[var(--ic-ink)]'
+            }`}
+          >
+            {m === 'crop' ? 'Crop' : 'Fit'}
+          </button>
+        ))}
+      </div>
+      <p className="-mt-1 text-[11px] leading-snug text-[var(--ic-ink-4)]">
+        {isFit
+          ? 'Source contained inside the frame, blurred bleed fills the rest.'
+          : 'Subject-aware crop fills the frame.'}
+      </p>
+
       <RailHeader>Smart reframe</RailHeader>
-      <RailSlider
-        label="Subject lock"
-        value={subjectLock}
-        valueLabel={lockLabel}
-        min={0}
-        max={100}
-        onChange={onSubjectLockChange}
-      />
-      <RailSlider
-        label="Padding"
-        value={padding}
-        valueLabel={`${padding}%`}
-        min={0}
-        max={30}
-        onChange={onPaddingChange}
-      />
-      <Switch label="Hold on faces" on={holdOnFaces} onChange={onHoldOnFacesChange} />
+      <div className={isFit ? 'pointer-events-none opacity-40' : undefined} aria-hidden={isFit}>
+        <RailSlider
+          label="Subject lock"
+          value={subjectLock}
+          valueLabel={lockLabel}
+          min={0}
+          max={100}
+          onChange={onSubjectLockChange}
+        />
+        <div className="h-2" />
+        <RailSlider
+          label="Padding"
+          value={padding}
+          valueLabel={`${padding}%`}
+          min={0}
+          max={30}
+          onChange={onPaddingChange}
+        />
+        <Switch label="Hold on faces" on={holdOnFaces} onChange={onHoldOnFacesChange} />
+      </div>
 
       <RailHeader>Output</RailHeader>
       <div className="flex flex-col gap-2">
