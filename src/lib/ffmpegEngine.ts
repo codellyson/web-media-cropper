@@ -1,7 +1,12 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { toBlobURL } from '@ffmpeg/util'
 
-const CORE_BASE = '/ffmpeg'
+// The ffmpeg-wasm `.js` glue (~150 kB) ships with the build at /ffmpeg/.
+// The `.wasm` core (~30 MB) is too heavy for the Worker bundle, so it loads
+// from a static-asset CDN at runtime. The CDN response must include CORS
+// headers (e.g. Access-Control-Allow-Origin) so toBlobURL's fetch succeeds.
+const CORE_JS_URL = '/ffmpeg/ffmpeg-core.js'
+const CORE_WASM_URL = 'https://assets.kreativekorna.com/ffmpeg/ffmpeg-core.wasm'
 
 let instance: FFmpeg | null = null
 let loadPromise: Promise<FFmpeg> | null = null
@@ -40,8 +45,8 @@ export function getFFmpeg(): Promise<FFmpeg> {
     const ff = new FFmpeg()
     try {
       const [coreURL, wasmURL] = await Promise.all([
-        toBlobURL(`${CORE_BASE}/ffmpeg-core.js`, 'text/javascript'),
-        toBlobURL(`${CORE_BASE}/ffmpeg-core.wasm`, 'application/wasm'),
+        toBlobURL(CORE_JS_URL, 'text/javascript'),
+        toBlobURL(CORE_WASM_URL, 'application/wasm'),
       ])
       await ff.load({ coreURL, wasmURL })
       instance = ff
@@ -55,6 +60,17 @@ export function getFFmpeg(): Promise<FFmpeg> {
     }
   })()
   return loadPromise
+}
+
+/**
+ * Returns a `0xRRGGBB` color string for ffmpeg filter graphs. Returns null if
+ * the input isn't a well-formed hex color. ffmpeg accepts `#RRGGBB` directly,
+ * but `0xRRGGBB` avoids any URL/shell escaping concerns and is universal.
+ */
+function sanitizeFfmpegColor(input: unknown): string | null {
+  if (typeof input !== 'string') return null
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(input.trim())
+  return m ? `0x${m[1].toLowerCase()}` : null
 }
 
 function extOf(mime: string, name: string): string {
@@ -476,6 +492,10 @@ export async function cropEncodeVideo(
      * stay at one re-encode, not two.
      */
     trimMs?: { in: number; out: number }
+    /** Backdrop kind for fit mode. Default: 'blur'. */
+    backdropType?: 'blur' | 'solid'
+    /** Hex color (#RRGGBB) used when backdropType === 'solid'. */
+    backdropColor?: string
   } = {},
 ): Promise<Blob> {
   const ff = await getFFmpeg()
@@ -492,8 +512,20 @@ export async function cropEncodeVideo(
   const ow = Math.max(2, Math.round(output.width / 2) * 2)
   const oh = Math.max(2, Math.round(output.height / 2) * 2)
 
-  // Fit mode: split source into two paths — a cover-fit blurred backdrop and a
-  // contain-fit foreground — then overlay the foreground centered on the backdrop.
+  const backdropType = options.backdropType ?? 'blur'
+  const backdropColor = sanitizeFfmpegColor(options.backdropColor) ?? 'black'
+
+  // Solid backdrop: a single `pad` filter wraps the contain-fit source with the
+  // chosen color, then `vignette` darkens the corners so the bleed reads as
+  // ambient light rather than flat paint. PI/5 is a moderate falloff angle.
+  // Still no filter_complex, no blur — measurably faster than the blur path.
+  const solidVf =
+    `scale=${ow}:${oh}:force_original_aspect_ratio=decrease:force_divisible_by=2,` +
+    `pad=${ow}:${oh}:(${ow}-iw)/2:(${oh}-ih)/2:color=${backdropColor},` +
+    `vignette=angle=PI/5,format=yuv420p`
+
+  // Blur backdrop: split source into two paths — a cover-fit blurred backdrop
+  // and a contain-fit foreground — then overlay foreground centered on backdrop.
   //
   // Perf note: blur ops are O(W*H*kernel) per frame, so a strong full-res Gaussian
   // crawls in ffmpeg-wasm. Instead we cover-fit, downscale hard, run a cheap
@@ -521,9 +553,25 @@ export async function cropEncodeVideo(
       ? ['-ss', fmtTime(trim.in), '-to', fmtTime(trim.out)]
       : []
 
-  const args: string[] =
-    fillMode === 'fit'
+  const fitArgs: string[] =
+    backdropType === 'solid'
       ? [
+          '-i',
+          inputName,
+          ...trimArgs,
+          '-vf',
+          solidVf,
+          '-c:v',
+          'libx264',
+          '-preset',
+          'veryfast',
+          '-crf',
+          String(crf),
+          '-movflags',
+          '+faststart',
+          outputName,
+        ]
+      : [
           '-i',
           inputName,
           ...trimArgs,
@@ -543,6 +591,10 @@ export async function cropEncodeVideo(
           '+faststart',
           outputName,
         ]
+
+  const args: string[] =
+    fillMode === 'fit'
+      ? fitArgs
       : [
           '-i',
           inputName,
@@ -609,14 +661,32 @@ export async function compressVideoToTargetSize(
   name: string,
   durationMs: number,
   targetBytes: number,
-  options: { onProgress?: (p: CompressProgress) => void } = {},
+  options: {
+    onProgress?: (p: CompressProgress) => void
+    /**
+     * Optional trim range in ms. When provided, compression operates on the
+     * trimmed slice and CRF estimation uses the trimmed duration so the size
+     * target reflects the actual output, not the full source.
+     */
+    trimMs?: { in: number; out: number }
+  } = {},
 ): Promise<Blob> {
   const ff = await getFFmpeg()
   const ext = extOf(blob.type, name)
   const inputName = `in.${ext}`
   const outputName = 'out.mp4'
 
-  const durationSec = Math.max(1, durationMs / 1000)
+  // Output-seek trim args (after -i) — accurate, suits the re-encode we're
+  // already doing. Each iteration runs the same trim.
+  const trim = options.trimMs
+  const trimArgs: string[] =
+    trim && trim.out > trim.in
+      ? ['-ss', fmtTime(trim.in), '-to', fmtTime(trim.out)]
+      : []
+  const effectiveDurationMs =
+    trim && trim.out > trim.in ? trim.out - trim.in : durationMs
+
+  const durationSec = Math.max(1, effectiveDurationMs / 1000)
   let crf = estimateInitialCrf(targetBytes, durationSec)
   let bestData: ArrayBuffer | null = null
   let bestDiff = Infinity
@@ -636,6 +706,7 @@ export async function compressVideoToTargetSize(
           await runEncodeWithAudioFallback(ff, [
             '-i',
             inputName,
+            ...trimArgs,
             '-c:v',
             'libx264',
             '-preset',

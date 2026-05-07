@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { cropInWorker, type FillMode } from '@/lib/cropClient'
+import { cropInWorker, type BackdropType, type FillMode } from '@/lib/cropClient'
 import type { CropBox, OutputFormat, OutputSize } from '@/lib/crop'
 
 type Args = {
@@ -12,6 +12,10 @@ type Args = {
   fillMode?: FillMode
   /** CSS blur radius for fit-mode bleed, in pixels. Ignored when fillMode === 'crop'. */
   blurPx?: number
+  /** Backdrop kind for fit mode. Default: 'blur'. */
+  backdropType?: BackdropType
+  /** Hex color (#RRGGBB) used when backdropType === 'solid'. */
+  backdropColor?: string
   debounceMs?: number
 }
 
@@ -30,6 +34,8 @@ export function useCroppedBlob({
   quality,
   fillMode = 'crop',
   blurPx,
+  backdropType,
+  backdropColor,
   debounceMs = 250,
 }: Args): Result {
   const [state, setState] = useState<Result>({ blob: null, loading: false, error: null })
@@ -59,6 +65,8 @@ export function useCroppedBlob({
           quality,
           fillMode,
           blurPx,
+          backdropType,
+          backdropColor,
         })
         if (!cancelled) setState({ blob, loading: false, error: null })
       } catch (err) {
@@ -88,6 +96,8 @@ export function useCroppedBlob({
     quality,
     fillMode,
     blurPx,
+    backdropType,
+    backdropColor,
     debounceMs,
   ])
 

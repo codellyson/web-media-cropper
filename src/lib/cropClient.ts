@@ -27,12 +27,20 @@ function getWorker(): Worker {
 }
 
 export type FillMode = 'crop' | 'fit'
+export type BackdropType = 'blur' | 'solid'
 
 export function cropInWorker(
   blob: Blob,
   box: CropBox,
   output: OutputSize,
-  options: { format: OutputFormat; quality: number; fillMode?: FillMode; blurPx?: number },
+  options: {
+    format: OutputFormat
+    quality: number
+    fillMode?: FillMode
+    blurPx?: number
+    backdropType?: BackdropType
+    backdropColor?: string
+  },
 ): Promise<Blob> {
   const id = nextId++
   const req: WorkerCropRequest = {
@@ -44,6 +52,8 @@ export function cropInWorker(
     quality: options.quality,
     fillMode: options.fillMode,
     blurPx: options.blurPx,
+    backdropType: options.backdropType,
+    backdropColor: options.backdropColor,
   }
   return new Promise<Blob>((resolve, reject) => {
     pending.set(id, { resolve, reject })

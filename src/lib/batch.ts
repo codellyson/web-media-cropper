@@ -1,5 +1,5 @@
 import JSZip from 'jszip'
-import { cropInWorker, type FillMode } from './cropClient'
+import { cropInWorker, type BackdropType, type FillMode } from './cropClient'
 import type { OutputFormat } from './crop'
 import { loadImageFromFile } from './loadImage'
 import { extractVideoFirstFrame, looksLikeVideo } from './loadVideo'
@@ -43,6 +43,8 @@ export async function runBatch(
     fillMode?: FillMode
     /** Bleed blur amount for fit mode (4–48 CSS-px). Ignored when fillMode === 'crop'. */
     blurPx?: number
+    backdropType?: BackdropType
+    backdropColor?: string
     onProgress?: (p: BatchProgress) => void
   },
 ): Promise<Blob> {
@@ -57,6 +59,8 @@ export async function runBatch(
   const imageExt = extFor(options.format)
   const fillMode: FillMode = options.fillMode ?? 'crop'
   const blurPx = options.blurPx
+  const backdropType: BackdropType = options.backdropType ?? 'blur'
+  const backdropColor = options.backdropColor
 
   let i = 0
   for (const file of files) {
@@ -70,6 +74,8 @@ export async function runBatch(
         zip,
         fillMode,
         blurPx,
+        backdropType,
+        backdropColor,
         options.onProgress,
       )
     } else {
@@ -85,6 +91,8 @@ export async function runBatch(
         options.quality,
         fillMode,
         blurPx,
+        backdropType,
+        backdropColor,
         options.onProgress,
       )
     }
@@ -109,6 +117,8 @@ async function processImageFile(
   quality: number,
   fillMode: FillMode,
   blurPx: number | undefined,
+  backdropType: BackdropType,
+  backdropColor: string | undefined,
   onProgress?: (p: BatchProgress) => void,
 ): Promise<number> {
   let i = startIdx
@@ -158,7 +168,14 @@ async function processImageFile(
                 height: Math.round(preset.height * scale),
               }
             })()
-      const blob = await cropInWorker(file, box, out, { format, quality, fillMode, blurPx })
+      const blob = await cropInWorker(file, box, out, {
+        format,
+        quality,
+        fillMode,
+        blurPx,
+        backdropType,
+        backdropColor,
+      })
       const base = safeName(file.name.replace(/\.[^.]+$/, ''))
       const folder = zip.folder(base) ?? zip
       const suffix = fillMode === 'fit' ? '-fit' : ''
@@ -186,6 +203,8 @@ async function processVideoFile(
   zip: JSZip,
   fillMode: FillMode,
   blurPx: number | undefined,
+  backdropType: BackdropType,
+  backdropColor: string | undefined,
   onProgress?: (p: BatchProgress) => void,
 ): Promise<number> {
   let i = startIdx
@@ -254,7 +273,7 @@ async function processVideoFile(
         file.name,
         { x: box.x, y: box.y, w: box.width, h: box.height },
         out,
-        { crf: VIDEO_CRF, fillMode, blurPx },
+        { crf: VIDEO_CRF, fillMode, blurPx, backdropType, backdropColor },
       )
       const base = safeName(file.name.replace(/\.[^.]+$/, ''))
       const folder = zip.folder(base) ?? zip

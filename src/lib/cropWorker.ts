@@ -10,6 +10,10 @@ export type WorkerCropRequest = {
   quality: number
   fillMode?: 'crop' | 'fit'
   blurPx?: number
+  /** Backdrop kind for fit mode. Default: 'blur'. */
+  backdropType?: 'blur' | 'solid'
+  /** Hex color (#RRGGBB) used when backdropType === 'solid'. */
+  backdropColor?: string
 }
 
 export type WorkerCropResponse =
@@ -69,24 +73,43 @@ async function renderFit(
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('OffscreenCanvas 2D unavailable')
 
-    // 1. Cover-fit blurred backdrop. Scale the source to cover the canvas, draw with blur filter.
-    const coverScale = Math.max(outW / sw, outH / sh)
-    const bgW = sw * coverScale
-    const bgH = sh * coverScale
-    const bgX = (outW - bgW) / 2
-    const bgY = (outH - bgH) / 2
-    const blurPx = Math.max(0, Math.min(80, req.blurPx ?? 40))
-    ctx.filter = `blur(${blurPx}px)`
-    // Draw slightly oversized so the blur halo doesn't leak transparent edges.
-    const bleed = blurPx * 2
-    ctx.drawImage(bitmap, bgX - bleed, bgY - bleed, bgW + bleed * 2, bgH + bleed * 2)
-    ctx.filter = 'none'
+    const backdropType = req.backdropType ?? 'blur'
+    if (backdropType === 'solid') {
+      // Solid backdrop: paint the chosen color, then overlay a soft radial
+      // vignette so the corners fall off. Without the vignette the color reads
+      // as flat paint; with it, the bleed feels like ambient studio light in
+      // the picked tone.
+      const color = sanitizeHexColor(req.backdropColor) ?? '#000000'
+      ctx.fillStyle = color
+      ctx.fillRect(0, 0, outW, outH)
+      const cx = outW / 2
+      const cy = outH / 2
+      const maxR = Math.sqrt(cx * cx + cy * cy)
+      const vignette = ctx.createRadialGradient(cx, cy, maxR * 0.25, cx, cy, maxR)
+      vignette.addColorStop(0, 'rgba(0,0,0,0)')
+      vignette.addColorStop(1, 'rgba(0,0,0,0.45)')
+      ctx.fillStyle = vignette
+      ctx.fillRect(0, 0, outW, outH)
+    } else {
+      // Cover-fit blurred backdrop. Scale the source to cover the canvas, draw with blur filter.
+      const coverScale = Math.max(outW / sw, outH / sh)
+      const bgW = sw * coverScale
+      const bgH = sh * coverScale
+      const bgX = (outW - bgW) / 2
+      const bgY = (outH - bgH) / 2
+      const blurPx = Math.max(0, Math.min(80, req.blurPx ?? 40))
+      ctx.filter = `blur(${blurPx}px)`
+      // Draw slightly oversized so the blur halo doesn't leak transparent edges.
+      const bleed = blurPx * 2
+      ctx.drawImage(bitmap, bgX - bleed, bgY - bleed, bgW + bleed * 2, bgH + bleed * 2)
+      ctx.filter = 'none'
 
-    // 2. Subtle dark scrim so subject pops against bright backdrops.
-    ctx.fillStyle = 'rgba(0,0,0,0.18)'
-    ctx.fillRect(0, 0, outW, outH)
+      // Subtle dark scrim so subject pops against bright backdrops.
+      ctx.fillStyle = 'rgba(0,0,0,0.18)'
+      ctx.fillRect(0, 0, outW, outH)
+    }
 
-    // 3. Contain-fit source on top, centered.
+    // Contain-fit source on top, centered.
     const fitScale = Math.min(outW / sw, outH / sh)
     const fgW = sw * fitScale
     const fgH = sh * fitScale
@@ -100,6 +123,13 @@ async function renderFit(
   } finally {
     bitmap.close?.()
   }
+}
+
+/** Returns a `#RRGGBB` string only when the input is well-formed; null otherwise. */
+function sanitizeHexColor(input: unknown): string | null {
+  if (typeof input !== 'string') return null
+  const trimmed = input.trim()
+  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed.toLowerCase() : null
 }
 
 async function handle(req: WorkerCropRequest): Promise<Blob> {

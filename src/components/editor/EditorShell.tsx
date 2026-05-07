@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Crop, FileImage, Minimize2, Music, Scissors, Settings2, Square, X } from 'lucide-react'
+import { Crop, Minimize2, Music, Scissors, Settings2, Square, X } from 'lucide-react'
 
 export type EditorTool =
   | 'crop'
@@ -8,7 +8,6 @@ export type EditorTool =
   | 'video-trim'
   | 'video-crop'
   | 'video-compress'
-  | 'video-gif'
   | 'video-audio'
 
 export type ToolbarMode = 'image' | 'video'
@@ -53,7 +52,7 @@ export function EditorShell({
   }, [sheetOpen])
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)]">
+    <div className="flex flex-1 flex-col overflow-hidden rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] lg:max-h-[calc(100dvh-10rem)]">
       <Toolbar
         fileName={fileName}
         fileMeta={fileMeta}
@@ -166,12 +165,15 @@ function Toolbar({
           />
         </>
       ) : (
+        // Order: most-used → least. Crop is the headline feature (default Fit
+        // reframe), Trim and Compress cover most edit jobs, Frame and Audio
+        // are utilities.
         <>
           <Tool
-            icon={<Square />}
-            label="Frame"
-            on={activeTool === 'video-frame'}
-            onClick={() => onToolChange('video-frame')}
+            icon={<Crop />}
+            label="Crop"
+            on={activeTool === 'video-crop'}
+            onClick={() => onToolChange('video-crop')}
           />
           <Tool
             icon={<Scissors />}
@@ -180,22 +182,16 @@ function Toolbar({
             onClick={() => onToolChange('video-trim')}
           />
           <Tool
-            icon={<Crop />}
-            label="Crop"
-            on={activeTool === 'video-crop'}
-            onClick={() => onToolChange('video-crop')}
-          />
-          <Tool
             icon={<Minimize2 />}
             label="Compress"
             on={activeTool === 'video-compress'}
             onClick={() => onToolChange('video-compress')}
           />
           <Tool
-            icon={<FileImage />}
-            label="GIF"
-            on={activeTool === 'video-gif'}
-            onClick={() => onToolChange('video-gif')}
+            icon={<Square />}
+            label="Frame"
+            on={activeTool === 'video-frame'}
+            onClick={() => onToolChange('video-frame')}
           />
           <Tool
             icon={<Music />}

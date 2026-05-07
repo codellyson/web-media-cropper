@@ -2,13 +2,20 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { runBatch, type BatchProgress } from '@/lib/batch'
 import { PRESETS, type Preset } from '@/lib/presets'
 import type { OutputFormat } from '@/lib/crop'
-import type { FillMode } from '@/lib/cropClient'
+import type { BackdropType, FillMode } from '@/lib/cropClient'
 import { downloadBlob } from '@/lib/download'
 import {
   extractVideoFirstFrame,
   formatDuration,
   looksLikeVideo,
 } from '@/lib/loadVideo'
+import {
+  loadBundles,
+  newBundleId,
+  sanitizeBundleName,
+  saveBundles,
+  type Bundle,
+} from '@/lib/bundles'
 
 const DEFAULT_PRESET_IDS = [
   'ig-square',
@@ -36,6 +43,8 @@ type StoredSettings = {
   quality?: number
   fillMode?: FillMode
   blurPx?: number
+  backdropType?: BackdropType
+  backdropColor?: string
 }
 
 type VideoMeta = { durationMs: number }
@@ -111,6 +120,19 @@ export function BatchView() {
     const b = loadStoredSettings()?.blurPx
     return typeof b === 'number' && b >= 4 && b <= 48 ? b : 24
   })
+  const [backdropType, setBackdropType] = useState<BackdropType>(() => {
+    const t = loadStoredSettings()?.backdropType
+    return t === 'solid' ? 'solid' : 'blur'
+  })
+  const [backdropColor, setBackdropColor] = useState<string>(() => {
+    const c = loadStoredSettings()?.backdropColor
+    return typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#000000'
+  })
+  // User-saved combinations of presets + output settings. Persisted separately
+  // from the live settings above so deleting your "current" doesn't nuke saved
+  // recipes. Read once at mount; mutations go through saveBundles().
+  const [bundles, setBundles] = useState<Bundle[]>(() => loadBundles())
+  const [activeBundleId, setActiveBundleId] = useState<string | null>(null)
   const [progress, setProgress] = useState<BatchProgress | null>(null)
   const [running, setRunning] = useState(false)
   const [over, setOver] = useState(false)
@@ -127,12 +149,46 @@ export function BatchView() {
           quality,
           fillMode,
           blurPx,
+          backdropType,
+          backdropColor,
         }),
       )
     } catch {
       // ignore — quota or disabled storage is non-fatal
     }
-  }, [selected, format, quality, fillMode, blurPx])
+  }, [selected, format, quality, fillMode, blurPx, backdropType, backdropColor])
+
+  // Live settings drift detection: if the user tweaks any output setting after
+  // applying a bundle, drop the active marker so the chip doesn't pretend the
+  // saved recipe still matches what's on screen.
+  useEffect(() => {
+    if (!activeBundleId) return
+    const active = bundles.find((b) => b.id === activeBundleId)
+    if (!active) return
+    const sameSelection =
+      selected.size === active.presetIds.length &&
+      active.presetIds.every((p) => selected.has(p))
+    const activeBackdropType = active.backdropType ?? 'blur'
+    const activeBackdropColor = active.backdropColor ?? '#000000'
+    const sameSettings =
+      active.format === format &&
+      active.quality === quality &&
+      active.fillMode === fillMode &&
+      active.blurPx === blurPx &&
+      activeBackdropType === backdropType &&
+      activeBackdropColor === backdropColor
+    if (!sameSelection || !sameSettings) setActiveBundleId(null)
+  }, [
+    activeBundleId,
+    bundles,
+    selected,
+    format,
+    quality,
+    fillMode,
+    blurPx,
+    backdropType,
+    backdropColor,
+  ])
 
   // Track current files via ref so async video-thumbnail extraction can skip
   // setting state for files the user removed mid-flight.
@@ -171,6 +227,51 @@ export function BatchView() {
       else next.add(id)
       return next
     })
+    // Editing the selection invalidates the "active bundle" tag — what you
+    // see no longer matches the saved recipe.
+    setActiveBundleId(null)
+  }
+
+  const applyBundle = (bundle: Bundle) => {
+    setSelected(new Set(bundle.presetIds))
+    setFormat(bundle.format)
+    setQuality(bundle.quality)
+    setFillMode(bundle.fillMode)
+    setBlurPx(bundle.blurPx)
+    setBackdropType(bundle.backdropType ?? 'blur')
+    setBackdropColor(bundle.backdropColor ?? '#000000')
+    setActiveBundleId(bundle.id)
+  }
+
+  const saveCurrentAsBundle = () => {
+    if (typeof window === 'undefined') return
+    if (selected.size === 0) return
+    const raw = window.prompt('Bundle name?', '')
+    if (raw == null) return
+    const name = sanitizeBundleName(raw)
+    if (!name) return
+    const next: Bundle = {
+      id: newBundleId(),
+      name,
+      presetIds: Array.from(selected),
+      format,
+      quality,
+      fillMode,
+      blurPx,
+      backdropType,
+      backdropColor,
+    }
+    const updated = [...bundles, next]
+    setBundles(updated)
+    saveBundles(updated)
+    setActiveBundleId(next.id)
+  }
+
+  const deleteBundle = (id: string) => {
+    const updated = bundles.filter((b) => b.id !== id)
+    setBundles(updated)
+    saveBundles(updated)
+    if (activeBundleId === id) setActiveBundleId(null)
   }
 
   const onFiles = (list: FileList | null) => {
@@ -260,6 +361,8 @@ export function BatchView() {
         quality,
         fillMode,
         blurPx,
+        backdropType,
+        backdropColor,
         onProgress: (p) => setProgress(p),
       })
       downloadBlob(zip, `wmc-batch-${new Date().toISOString().slice(0, 10)}.zip`)
@@ -469,6 +572,72 @@ export function BatchView() {
           </div>
         }
       >
+        {/* Bundles row — always visible so the save affordance is discoverable.
+            Empty state guides the user toward saving their first one. */}
+        <div className="mb-5 flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 font-mono-geist text-[10.5px] uppercase tracking-[0.18em] text-[var(--ic-ink-3)]">
+            Bundles
+          </span>
+          {bundles.map((b) => {
+            const active = b.id === activeBundleId
+            return (
+              <span
+                key={b.id}
+                className={`group inline-flex h-7 items-center gap-1 rounded-full border px-1 pl-3 text-[12px] transition ${
+                  active
+                    ? 'border-[var(--ic-ink)] bg-[var(--ic-ink)] text-[var(--ic-bg)]'
+                    : 'border-[var(--ic-line)] bg-[var(--ic-card)] text-[var(--ic-ink-2)] hover:border-[var(--ic-ink-4)] hover:text-[var(--ic-ink)]'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => applyBundle(b)}
+                  aria-pressed={active}
+                  className="font-medium"
+                  title={`Apply: ${b.presetIds.length} preset${b.presetIds.length === 1 ? '' : 's'} · ${b.fillMode === 'fit' ? 'Fit' : 'Crop'} · ${b.format.toUpperCase()}`}
+                >
+                  {b.name}
+                </button>
+                <span
+                  className={`font-mono-geist text-[10px] ${
+                    active ? 'opacity-60' : 'text-[var(--ic-ink-4)]'
+                  }`}
+                >
+                  {b.presetIds.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => deleteBundle(b.id)}
+                  aria-label={`Delete bundle ${b.name}`}
+                  className={`grid h-5 w-5 place-items-center rounded-full text-[14px] leading-none transition ${
+                    active
+                      ? 'text-[var(--ic-bg)]/70 hover:bg-white/10 hover:text-[var(--ic-bg)]'
+                      : 'text-[var(--ic-ink-4)] hover:bg-[var(--ic-bg-3)] hover:text-[var(--ic-ink)]'
+                  }`}
+                >
+                  ×
+                </button>
+              </span>
+            )
+          })}
+          <button
+            type="button"
+            onClick={saveCurrentAsBundle}
+            disabled={selected.size === 0}
+            className="inline-flex h-7 items-center gap-1 rounded-full border border-dashed border-[var(--ic-line-strong)] bg-transparent px-3 text-[12px] text-[var(--ic-ink-3)] transition hover:border-[var(--ic-ink)] hover:bg-[var(--ic-card)] hover:text-[var(--ic-ink)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--ic-line-strong)] disabled:hover:bg-transparent disabled:hover:text-[var(--ic-ink-3)]"
+            title={
+              selected.size === 0
+                ? 'Pick at least one preset to save a bundle'
+                : 'Save current selection + output settings as a bundle'
+            }
+          >
+            <span aria-hidden className="text-[14px] leading-none">
+              +
+            </span>
+            <span>{bundles.length === 0 ? 'Save your first bundle' : 'Save current'}</span>
+          </button>
+        </div>
+
         <div className="space-y-5">
           {groupedPresets.map(([platform, items]) => {
             const allOn = items.every((p) => selected.has(p.id))
@@ -560,8 +729,51 @@ export function BatchView() {
             </div>
           </SettingRow>
 
-          {/* Row 2: Blur (Fit only) */}
+          {/* Row 2: Backdrop (Fit only) */}
           {fillMode === 'fit' && (
+            <SettingRow label="Backdrop">
+              <div
+                role="radiogroup"
+                aria-label="Backdrop"
+                className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+              >
+                {(['blur', 'solid'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    role="radio"
+                    aria-checked={backdropType === t}
+                    onClick={() => setBackdropType(t)}
+                    className={`h-7 rounded-full px-3 transition ${
+                      backdropType === t
+                        ? 'bg-[var(--ic-ink)] text-[var(--ic-bg)]'
+                        : 'text-[var(--ic-ink-3)] hover:text-[var(--ic-ink)]'
+                    }`}
+                  >
+                    {t === 'blur' ? 'Blur' : 'Solid'}
+                  </button>
+                ))}
+              </div>
+              {backdropType === 'solid' && (
+                <label
+                  className="relative grid h-7 w-7 cursor-pointer place-items-center overflow-hidden rounded-full border border-[var(--ic-line)] hover:border-[var(--ic-ink-4)]"
+                  title={`Pick backdrop color (${backdropColor})`}
+                  style={{ background: backdropColor }}
+                >
+                  <input
+                    type="color"
+                    value={backdropColor}
+                    onChange={(e) => setBackdropColor(e.target.value)}
+                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    aria-label="Backdrop color"
+                  />
+                </label>
+              )}
+            </SettingRow>
+          )}
+
+          {/* Row 2b: Blur amount (Fit + Blur backdrop only) */}
+          {fillMode === 'fit' && backdropType === 'blur' && (
             <SettingRow label="Blur">
               <input
                 type="range"

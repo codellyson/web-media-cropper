@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Eye, EyeOff } from 'lucide-react'
 import { useImageSource } from '@/hooks/useImageSource'
 import { type CropBox, type OutputFormat } from '@/lib/crop'
-import { type FillMode } from '@/lib/cropClient'
+import { type BackdropType, type FillMode } from '@/lib/cropClient'
 import { downloadBlob, swapExtension } from '@/lib/download'
 import { extractExif, insertExifIntoJpeg, looksLikeJpeg } from '@/lib/exif'
 import { PRESETS, type Preset } from '@/lib/presets'
@@ -102,6 +102,8 @@ export default function App() {
   const [holdOnFaces, setHoldOnFaces] = useState(true)
   const [fillMode, setFillMode] = useState<FillMode>('fit')
   const [blurPx, setBlurPx] = useState<number>(24)
+  const [backdropType, setBackdropType] = useState<BackdropType>('blur')
+  const [backdropColor, setBackdropColor] = useState<string>('#000000')
 
   const focalPoint = useMemo<FocalPoint | null>(() => {
     if (!detection) return null
@@ -179,6 +181,8 @@ export default function App() {
     quality,
     fillMode,
     blurPx,
+    backdropType,
+    backdropColor,
   })
 
   const handleDownload = async () => {
@@ -370,6 +374,10 @@ export default function App() {
               onFillModeChange={setFillMode}
               blurPx={blurPx}
               onBlurPxChange={setBlurPx}
+              backdropType={backdropType}
+              onBackdropTypeChange={setBackdropType}
+              backdropColor={backdropColor}
+              onBackdropColorChange={setBackdropColor}
               subjectLock={subjectLock}
               onSubjectLockChange={setSubjectLock}
               padding={padding}
@@ -449,6 +457,8 @@ export default function App() {
                 sourceHeight={state.image.height}
                 aspect={aspect}
                 blurPx={blurPx}
+                backdropType={backdropType}
+                backdropColor={backdropColor}
               />
             ) : focalPoint ? (
               <>

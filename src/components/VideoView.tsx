@@ -34,6 +34,16 @@ import {
 
 const FRAME_STEP_MS = 1000 / 30
 
+/** Filename-safe single-decimal seconds: 3500ms -> "3.5s". */
+function fmtSeconds(ms: number): string {
+  return `${(Math.round(ms / 100) / 10).toFixed(1)}s`
+}
+
+/** Range suffix for export filenames, e.g. "-3.5s-7.0s". One source of truth. */
+function formatTrimSuffix(inMs: number, outMs: number): string {
+  return `-${fmtSeconds(inMs)}-${fmtSeconds(outMs)}`
+}
+
 const VIDEO_CROP_ASPECT_ENTRIES: MobileAspectEntry[] = VIDEO_PRESETS.map((p) => ({
   id: p.id,
   platform: p.platform,
@@ -46,6 +56,8 @@ type Capture = {
   timeMs: number
   thumb: string
   exporting: boolean
+  /** How the frame got into the gallery — manual via C/Capture, or auto via bulk. */
+  source: 'manual' | 'bulk'
 }
 
 type VideoViewProps = {
@@ -59,26 +71,36 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
   const [currentMs, setCurrentMs] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [captures, setCaptures] = useState<Capture[]>([])
-  const [mode, setMode] = useState<'frame' | 'trim' | 'crop' | 'compress' | 'gif' | 'audio'>('frame')
-  const [gifIn, setGifIn] = useState(0)
-  const [gifOut, setGifOut] = useState(Math.min(5000, video.durationMs))
-  const [gifFps, setGifFps] = useState(15)
-  const [gifWidth, setGifWidth] = useState(480)
-  const [gifWorking, setGifWorking] = useState(false)
+  // Defaults to 'crop' so the user lands on the headline feature (subject-aware
+  // reframe with Fit backdrop). Matches the toolbar's first tab.
+  const [mode, setMode] = useState<'frame' | 'trim' | 'crop' | 'compress' | 'audio'>('crop')
   const [audioWorking, setAudioWorking] = useState(false)
   const [trimIn, setTrimIn] = useState(0)
   const [trimOut, setTrimOut] = useState(video.durationMs)
-  const [trimming, setTrimming] = useState(false)
+  const [trimBusy, setTrimBusy] = useState(false)
   const [trimAccurate, setTrimAccurate] = useState(false)
+  // GIF rendering shares the trim range — picking 'gif' as Trim's output format
+  // turns the export into a palette-based GIF render. fps/width are GIF-only.
+  const [trimFormat, setTrimFormat] = useState<'mp4' | 'gif'>('mp4')
+  const [gifFps, setGifFps] = useState(15)
+  const [gifWidth, setGifWidth] = useState(480)
   const [cropPresetId, setCropPresetId] = useState<string>(VIDEO_PRESETS[0].id)
   const [cropOffset, setCropOffset] = useState<{ dx: number; dy: number }>({ dx: 0, dy: 0 })
   const [cropFillMode, setCropFillMode] = useState<'crop' | 'fit'>('fit')
   const [cropBlurPx, setCropBlurPx] = useState<number>(24)
+  const [cropBackdropType, setCropBackdropType] = useState<'blur' | 'solid'>('blur')
+  const [cropBackdropColor, setCropBackdropColor] = useState<string>('#000000')
   const [cropping, setCropping] = useState(false)
   const [compressTarget, setCompressTarget] = useState('10 MB')
   const [compressing, setCompressing] = useState(false)
   const [compressed, setCompressed] = useState<Blob | null>(null)
   const [progress, setProgress] = useState<{ label: string; pct: number } | null>(null)
+  // Bulk-capture state — independent of `progress` (which is for ffmpeg ops).
+  // Seek+drawImage loop runs in JS; can't race ffmpeg, so it's not in anyBusy.
+  const [bulkIntervalSec, setBulkIntervalSec] = useState<number>(2)
+  const [bulkCapturing, setBulkCapturing] = useState(false)
+  const [bulkDone, setBulkDone] = useState(0)
+  const [bulkTotal, setBulkTotal] = useState(0)
   const captureIdRef = useRef(1)
   const engine = useEngineStatus()
   const [keyframes, setKeyframes] = useState<number[]>([])
@@ -157,9 +179,88 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
     const thumb = canvas.toDataURL('image/jpeg', 0.7)
     setCaptures((prev) => [
       ...prev,
-      { id: captureIdRef.current++, timeMs: Math.round(v.currentTime * 1000), thumb, exporting: false },
+      {
+        id: captureIdRef.current++,
+        timeMs: Math.round(v.currentTime * 1000),
+        thumb,
+        exporting: false,
+        source: 'manual',
+      },
     ])
   }, [video.width, video.height])
+
+  /**
+   * Bulk-capture: seek the video element to evenly-spaced timestamps and
+   * snapshot each into the gallery. Caps at 100 frames so a 0.5s interval on a
+   * 60s clip can't generate 120 captures and tank the browser. Runs entirely
+   * client-side on the <video> element — does not race ffmpeg.
+   */
+  const bulkCapture = useCallback(
+    async (intervalSec: number) => {
+      if (bulkCapturing) return
+      const v = videoRef.current
+      if (!v || !(intervalSec > 0)) return
+      setBulkCapturing(true)
+      const wasPaused = v.paused
+      v.pause()
+
+      const total = Math.min(
+        100,
+        Math.max(1, Math.floor(video.durationMs / 1000 / intervalSec) + 1),
+      )
+      setBulkTotal(total)
+      setBulkDone(0)
+
+      // Re-running bulk replaces the prior bulk batch — the user is changing
+      // their mind about the interval, not adding to it. Manual single-frame
+      // captures (source: 'manual') survive untouched.
+      setCaptures((prev) => prev.filter((c) => c.source !== 'bulk'))
+
+      const W = 240
+      const aspect = video.width / video.height
+      const H = Math.round(W / aspect)
+
+      try {
+        for (let i = 0; i < total; i++) {
+          const tSec = Math.min(
+            (video.durationMs - 50) / 1000,
+            i * intervalSec,
+          )
+          // Seek and wait for the next 'seeked' event before drawing — drawing
+          // before the seek completes would snapshot the prior frame.
+          v.currentTime = tSec
+          await new Promise<void>((resolve) => {
+            const onSeeked = () => {
+              v.removeEventListener('seeked', onSeeked)
+              resolve()
+            }
+            v.addEventListener('seeked', onSeeked)
+          })
+
+          const canvas = document.createElement('canvas')
+          canvas.width = W
+          canvas.height = H
+          const ctx = canvas.getContext('2d')
+          if (!ctx) continue
+          ctx.drawImage(v, 0, 0, W, H)
+          const thumb = canvas.toDataURL('image/jpeg', 0.7)
+          const cap: Capture = {
+            id: captureIdRef.current++,
+            timeMs: Math.round(tSec * 1000),
+            thumb,
+            exporting: false,
+            source: 'bulk',
+          }
+          setCaptures((prev) => [...prev, cap])
+          setBulkDone(i + 1)
+        }
+      } finally {
+        setBulkCapturing(false)
+        if (!wasPaused) void v.play()
+      }
+    },
+    [bulkCapturing, video.durationMs, video.width, video.height],
+  )
 
   useEffect(() => {
     function isTyping(t: EventTarget | null): boolean {
@@ -191,8 +292,7 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
     setCaptures((prev) => prev.map((c) => (c.id === cap.id ? { ...c, exporting: true } : c)))
     try {
       const png = await extractFrame(video.sourceBlob, video.name, cap.timeMs)
-      const sec = (cap.timeMs / 1000).toFixed(2).replace('.', '_')
-      const name = swapExtension(video.name, 'png').replace('.png', `-frame-${sec}s.png`)
+      const name = swapExtension(video.name, 'png').replace('.png', `-frame-${fmtSeconds(cap.timeMs)}.png`)
       downloadBlob(png, name)
     } catch (err) {
       console.error('[exportCapture]', err)
@@ -214,9 +314,9 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
   const clearCaptures = () => setCaptures([])
 
   const exportTrim = async () => {
-    if (trimming) return
+    if (trimBusy) return
     if (trimOut <= trimIn) return
-    setTrimming(true)
+    setTrimBusy(true)
     const label = trimAccurate ? 'Trimming (frame-accurate)…' : 'Trimming…'
     setProgress({ label, pct: 0 })
     try {
@@ -231,13 +331,11 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
             return m ? m[1] : 'mp4'
           })()
       const base = video.name.replace(/\.[^.]+$/, '')
-      const inSec = (trimIn / 1000).toFixed(2).replace('.', '_')
-      const outSec = (trimOut / 1000).toFixed(2).replace('.', '_')
-      downloadBlob(blob, `${base}-trim-${inSec}s-${outSec}s.${ext}`)
+      downloadBlob(blob, `${base}-trim${formatTrimSuffix(trimIn, trimOut)}.${ext}`)
     } catch (err) {
       console.error('[exportTrim]', err)
     } finally {
-      setTrimming(false)
+      setTrimBusy(false)
       setProgress(null)
     }
   }
@@ -301,24 +399,30 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
   }
 
   const exportGif = async () => {
-    if (gifWorking) return
-    if (gifOut <= gifIn) return
-    setGifWorking(true)
+    if (trimBusy) return
+    if (trimOut <= trimIn) return
+    setTrimBusy(true)
     setProgress({ label: 'Rendering GIF…', pct: 0 })
     try {
-      const blob = await gifFromVideo(video.sourceBlob, video.name, gifIn, gifOut, {
+      const blob = await gifFromVideo(video.sourceBlob, video.name, trimIn, trimOut, {
         fps: gifFps,
         width: gifWidth,
         onProgress: (pct) => setProgress({ label: 'Rendering GIF…', pct }),
       })
       const base = video.name.replace(/\.[^.]+$/, '')
-      downloadBlob(blob, `${base}-${(gifIn / 1000).toFixed(1)}s-${(gifOut / 1000).toFixed(1)}s.gif`)
+      downloadBlob(blob, `${base}${formatTrimSuffix(trimIn, trimOut)}.gif`)
     } catch (err) {
       console.error('[exportGif]', err)
     } finally {
-      setGifWorking(false)
+      setTrimBusy(false)
       setProgress(null)
     }
+  }
+
+  /** Right-rail Export action for the Trim tool — branches by chosen format. */
+  const exportTrimOrGif = () => {
+    if (trimFormat === 'gif') return exportGif()
+    return exportTrim()
   }
 
   const handleToolChange = (t: Parameters<React.ComponentProps<typeof EditorShell>['onToolChange']>[0]) => {
@@ -329,9 +433,6 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
       videoRef.current?.pause()
     } else if (t === 'video-compress') {
       setMode('compress')
-      videoRef.current?.pause()
-    } else if (t === 'video-gif') {
-      setMode('gif')
       videoRef.current?.pause()
     } else if (t === 'video-audio') {
       setMode('audio')
@@ -372,15 +473,15 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
         {
           fillMode: cropFillMode,
           blurPx: cropBlurPx,
+          backdropType: cropBackdropType,
+          backdropColor: cropBackdropColor,
           trimMs: isTrimmed ? { in: trimIn, out: trimOut } : undefined,
           onProgress: (pct) => setProgress({ label, pct }),
         },
       )
       const base = video.name.replace(/\.[^.]+$/, '')
       const fitSuffix = cropFillMode === 'fit' ? '-fit' : ''
-      const trimSuffix = isTrimmed
-        ? `-${Math.round(trimIn / 100) / 10}s-${Math.round(trimOut / 100) / 10}s`
-        : ''
+      const trimSuffix = isTrimmed ? formatTrimSuffix(trimIn, trimOut) : ''
       downloadBlob(
         out,
         `${base}-${cropPreset.id}-${output.width}x${output.height}${fitSuffix}${trimSuffix}.mp4`,
@@ -401,6 +502,7 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
     setCompressed(null)
     setProgress({ label: 'Compressing…', pct: 0 })
     try {
+      const isTrimmed = trimIn > 0 || trimOut < video.durationMs - 1
       const out = await compressVideoToTargetSize(
         video.sourceBlob,
         video.name,
@@ -409,11 +511,13 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
         {
           onProgress: ({ pct, pass, maxPasses }) =>
             setProgress({ label: `Compressing · pass ${pass}/${maxPasses}`, pct }),
+          trimMs: isTrimmed ? { in: trimIn, out: trimOut } : undefined,
         },
       )
       setCompressed(out)
       const base = video.name.replace(/\.[^.]+$/, '')
-      downloadBlob(out, `${base}-compressed.mp4`)
+      const trimSuffix = isTrimmed ? formatTrimSuffix(trimIn, trimOut) : ''
+      downloadBlob(out, `${base}-compressed${trimSuffix}.mp4`)
     } catch (err) {
       console.error('[exportCompress]', err)
     } finally {
@@ -421,6 +525,10 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
       setProgress(null)
     }
   }
+
+  // ffmpeg-wasm holds an exclusive in-memory FS, so any active export blocks
+  // every other export. Derive once and pass to every rail's button.
+  const anyBusy = trimBusy || cropping || compressing || audioWorking
 
   // Mobile bottom-bar primary action — varies by tool. Audio mode has multiple
   // actions (extract / mute / replace) so we leave it empty there; the user
@@ -430,19 +538,27 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
   let mobileAction: React.ReactNode = null
   if (mode === 'trim') {
     const span = trimOut - trimIn
+    // GIF is meaningful at full clip; MP4 trim isn't. Match TrimRail's disabled rule.
     const disabled =
-      trimming ||
+      anyBusy ||
       engine.kind === 'loading' ||
       span < 100 ||
-      span >= video.durationMs
+      (trimFormat === 'mp4' && span >= video.durationMs)
+    const label = trimBusy
+      ? trimFormat === 'gif'
+        ? 'Rendering…'
+        : 'Trimming…'
+      : trimFormat === 'gif'
+        ? 'Export GIF'
+        : 'Export trim'
     mobileAction = (
-      <button type="button" onClick={exportTrim} disabled={disabled} className={mobileActionClass}>
-        {trimming ? 'Trimming…' : 'Export trim'}
+      <button type="button" onClick={exportTrimOrGif} disabled={disabled} className={mobileActionClass}>
+        {label}
       </button>
     )
   } else if (mode === 'crop') {
     const cropTrimmed = trimIn > 0 || trimOut < video.durationMs - 1
-    const disabled = cropping || engine.kind === 'loading'
+    const disabled = anyBusy || engine.kind === 'loading'
     const baseLabel = cropFillMode === 'fit' ? 'Export fit' : 'Export crop'
     mobileAction = (
       <button type="button" onClick={exportCrop} disabled={disabled} className={mobileActionClass}>
@@ -454,29 +570,24 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
       </button>
     )
   } else if (mode === 'compress') {
-    const disabled = compressing || engine.kind === 'loading' || !targetBytes
+    const compressTrimmed = trimIn > 0 || trimOut < video.durationMs - 1
+    const disabled = anyBusy || engine.kind === 'loading' || !targetBytes
     mobileAction = (
       <button type="button" onClick={exportCompress} disabled={disabled} className={mobileActionClass}>
-        {compressing ? 'Compressing…' : 'Compress'}
+        {compressing
+          ? 'Compressing…'
+          : compressTrimmed
+            ? `Compress · ${formatDuration(trimOut - trimIn)}`
+            : 'Compress'}
       </button>
     )
-  } else if (mode === 'gif') {
-    const span = gifOut - gifIn
-    const disabled =
-      gifWorking ||
-      engine.kind === 'loading' ||
-      span < 100 ||
-      span >= video.durationMs
-    mobileAction = (
-      <button type="button" onClick={exportGif} disabled={disabled} className={mobileActionClass}>
-        {gifWorking ? 'Rendering…' : 'Export GIF'}
-      </button>
-    )
-  } else if (mode === 'frame') {
-    const disabled = captures.length === 0 || engine.kind === 'loading'
+  } else if (mode === 'frame' && captures.length > 0) {
+    // Hidden when no captures — better than a "Export  frames" placeholder.
+    // Once the user captures a first frame, the button appears with the count.
+    const disabled = anyBusy || engine.kind === 'loading'
     mobileAction = (
       <button type="button" onClick={exportAll} disabled={disabled} className={mobileActionClass}>
-        Export {captures.length > 0 ? captures.length : ''} {captures.length === 1 ? 'frame' : 'frames'}
+        Export {captures.length} {captures.length === 1 ? 'frame' : 'frames'}
       </button>
     )
   }
@@ -505,11 +616,9 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
             ? 'video-crop'
             : mode === 'compress'
               ? 'video-compress'
-              : mode === 'gif'
-                ? 'video-gif'
-                : mode === 'audio'
-                  ? 'video-audio'
-                  : 'video-frame'
+              : mode === 'audio'
+                ? 'video-audio'
+                : 'video-frame'
       }
       onToolChange={handleToolChange}
       fileMeta={
@@ -529,7 +638,7 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
             </div>
           </div>
 
-          {mode === 'crop' ? (
+          {mode === 'crop' && (
             <div className="flex flex-col gap-3 border-t border-[var(--ic-line)] pt-3">
               <RailHeader>Aspect</RailHeader>
               <CropAspectRail
@@ -540,13 +649,52 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
                 }}
               />
             </div>
-          ) : (
+          )}
+
+          {mode === 'trim' && (
+            <TrimSelectionPanel
+              inMs={trimIn}
+              outMs={trimOut}
+              onSetIn={() => setTrimIn(currentMs)}
+              onSetOut={() => setTrimOut(Math.max(currentMs, trimIn + 100))}
+              onReset={() => {
+                setTrimIn(0)
+                setTrimOut(video.durationMs)
+              }}
+            />
+          )}
+
+          {mode === 'compress' && (
+            <CompressResultPanel
+              targetBytes={targetBytes}
+              sourceBytes={video.sizeBytes}
+              outputBytes={compressed?.size ?? null}
+              compressing={compressing}
+              durationMs={video.durationMs}
+              trimIn={trimIn}
+              trimOut={trimOut}
+              onResetTrim={() => {
+                setTrimIn(0)
+                setTrimOut(video.durationMs)
+              }}
+            />
+          )}
+
+          {mode === 'frame' && (
+            <FrameBulkPanel
+              durationMs={video.durationMs}
+              intervalSec={bulkIntervalSec}
+              onIntervalChange={setBulkIntervalSec}
+              capturing={bulkCapturing}
+              done={bulkDone}
+              total={bulkTotal}
+              onCapture={() => void bulkCapture(bulkIntervalSec)}
+            />
+          )}
+
+          {mode === 'audio' && (
             <p className="px-1 font-mono-geist text-[10.5px] leading-relaxed text-[var(--ic-ink-4)]">
-              {mode === 'frame'
-                ? '← /  step ±1 frame · space play/pause · C capture'
-                : mode === 'trim'
-                  ? 'Drag the in / out handles. Cuts may snap to the nearest keyframe.'
-                  : 'Set a target file size. Output is a universal MP4.'}
+              Extract, mute, or replace the source audio.
             </p>
           )}
         </div>
@@ -556,6 +704,7 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
           <FrameGalleryRail
             captures={captures}
             engine={engine}
+            busy={anyBusy}
             onExport={exportCapture}
             onExportAll={exportAll}
             onRemove={removeCapture}
@@ -567,17 +716,18 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
             durationMs={video.durationMs}
             inMs={trimIn}
             outMs={trimOut}
-            onSetIn={() => setTrimIn(currentMs)}
-            onSetOut={() => setTrimOut(Math.max(currentMs, trimIn + 100))}
-            onReset={() => {
-              setTrimIn(0)
-              setTrimOut(video.durationMs)
-            }}
+            format={trimFormat}
+            onFormatChange={setTrimFormat}
             engine={engine}
-            trimming={trimming}
+            trimBusy={trimBusy}
+            busy={anyBusy}
             accurate={trimAccurate}
             onAccurateChange={setTrimAccurate}
-            onExport={exportTrim}
+            fps={gifFps}
+            onFpsChange={setGifFps}
+            width={gifWidth}
+            onWidthChange={setGifWidth}
+            onExport={exportTrimOrGif}
           />
         ) : mode === 'crop' ? (
           <CropRail
@@ -593,6 +743,10 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
             }}
             blurPx={cropBlurPx}
             onBlurPxChange={setCropBlurPx}
+            backdropType={cropBackdropType}
+            onBackdropTypeChange={setCropBackdropType}
+            backdropColor={cropBackdropColor}
+            onBackdropColorChange={setCropBackdropColor}
             durationMs={video.durationMs}
             trimIn={trimIn}
             trimOut={trimOut}
@@ -602,29 +756,14 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
             }}
             engine={engine}
             cropping={cropping}
+            busy={anyBusy}
             onExport={exportCrop}
-          />
-        ) : mode === 'gif' ? (
-          <GifRail
-            durationMs={video.durationMs}
-            inMs={gifIn}
-            outMs={gifOut}
-            onTrimChange={({ inMs, outMs }) => {
-              setGifIn(inMs)
-              setGifOut(outMs)
-            }}
-            fps={gifFps}
-            onFpsChange={setGifFps}
-            width={gifWidth}
-            onWidthChange={setGifWidth}
-            engine={engine}
-            working={gifWorking}
-            onExport={exportGif}
           />
         ) : mode === 'audio' ? (
           <AudioRail
             engine={engine}
             working={audioWorking}
+            busy={anyBusy}
             onExtract={exportAudio}
             onMute={exportMuted}
             onReplace={exportReplacedAudio}
@@ -634,10 +773,9 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
             target={compressTarget}
             onTargetChange={setCompressTarget}
             targetBytes={targetBytes}
-            sourceBytes={video.sizeBytes}
-            outputBytes={compressed?.size ?? null}
             engine={engine}
             compressing={compressing}
+            busy={anyBusy}
             onExport={exportCompress}
           />
         )
@@ -652,7 +790,9 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
         playing={playing}
         capturedTimes={mode === 'frame' ? captures.map((c) => c.timeMs) : []}
         keyframeTimes={
-          (mode === 'trim' && !trimAccurate) || mode === 'crop' ? keyframes : []
+          (mode === 'trim' && !trimAccurate) || mode === 'crop' || mode === 'compress'
+            ? keyframes
+            : []
         }
         onSeek={seek}
         onPlayToggle={togglePlay}
@@ -670,7 +810,7 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
           ) : null
         }
         trim={
-          mode === 'trim' || mode === 'crop'
+          mode === 'trim' || mode === 'crop' || mode === 'compress'
             ? {
                 inMs: trimIn,
                 outMs: trimOut,
@@ -679,16 +819,7 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
                   setTrimOut(outMs)
                 },
               }
-            : mode === 'gif'
-              ? {
-                  inMs: gifIn,
-                  outMs: gifOut,
-                  onTrimChange: ({ inMs, outMs }) => {
-                    setGifIn(inMs)
-                    setGifOut(outMs)
-                  },
-                }
-              : undefined
+            : undefined
         }
         cropAspect={mode === 'crop' ? cropPreset.width / cropPreset.height : undefined}
         cropLabel={mode === 'crop' ? `${cropPreset.short ?? cropPreset.name} · ${cropPreset.width}×${cropPreset.height}` : undefined}
@@ -696,40 +827,101 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
         onCropOffsetChange={mode === 'crop' && cropFillMode === 'crop' ? setCropOffset : undefined}
         cropFillMode={mode === 'crop' ? cropFillMode : undefined}
         fitBlurPx={mode === 'crop' ? cropBlurPx : undefined}
+        fitBackdropType={mode === 'crop' ? cropBackdropType : undefined}
+        fitBackdropColor={mode === 'crop' ? cropBackdropColor : undefined}
         encodeProgress={progress}
       />
     </EditorShell>
   )
 }
 
-function TrimRail({
+/**
+ * Left-rail panel for the Trim tool. Shows In/Out/Duration stats and the
+ * Set-IN / Set-OUT / reset controls — these are about *what slice of the clip
+ * you're operating on* (scope), so they belong on the left next to Source.
+ *
+ * Right-rail TrimRail keeps the export-format-y settings (Frame-accurate
+ * toggle) and the Export button.
+ */
+/**
+ * Left-rail panel for the Frame tool. Lets the user snapshot every Nth second
+ * across the clip in one click — the captures land in the gallery on the right
+ * and export through the existing single-frame pipeline.
+ *
+ * Capped at 100 frames downstream so a 0.5s interval on a long clip doesn't
+ * runaway-fill the gallery.
+ */
+function FrameBulkPanel({
   durationMs,
+  intervalSec,
+  onIntervalChange,
+  capturing,
+  done,
+  total,
+  onCapture,
+}: {
+  durationMs: number
+  intervalSec: number
+  onIntervalChange: (s: number) => void
+  capturing: boolean
+  done: number
+  total: number
+  onCapture: () => void
+}) {
+  const expected = Math.min(
+    100,
+    Math.max(1, Math.floor(durationMs / 1000 / Math.max(0.1, intervalSec)) + 1),
+  )
+  const intervalLabel = intervalSec < 1 ? `${(intervalSec * 1000).toFixed(0)}ms` : `${intervalSec.toFixed(1)}s`
+  return (
+    <div className="flex flex-col gap-3 border-t border-[var(--ic-line)] pt-3">
+      <RailHeader>Bulk capture</RailHeader>
+      <RailSlider
+        label="Interval"
+        value={Math.round(intervalSec * 10)}
+        valueLabel={intervalLabel}
+        min={5}
+        max={100}
+        onChange={(v) => onIntervalChange(v / 10)}
+      />
+      <button
+        type="button"
+        onClick={onCapture}
+        disabled={capturing}
+        className="inline-flex h-9 items-center justify-center gap-2 rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] px-3 text-[12.5px] font-medium text-[var(--ic-ink-2)] transition enabled:hover:border-[var(--ic-ink-4)] enabled:hover:text-[var(--ic-ink)] disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {capturing
+          ? `Capturing ${done}/${total}…`
+          : `Capture every ${intervalLabel}`}
+        {!capturing && (
+          <span className="font-mono-geist text-[10.5px] uppercase tracking-wider text-[var(--ic-ink-4)]">
+            ~{expected}
+          </span>
+        )}
+      </button>
+      <p className="px-1 font-mono-geist text-[10.5px] leading-relaxed text-[var(--ic-ink-4)]">
+        Re-running replaces the previous batch · scrub + C still adds single frames
+      </p>
+    </div>
+  )
+}
+
+function TrimSelectionPanel({
   inMs,
   outMs,
   onSetIn,
   onSetOut,
   onReset,
-  engine,
-  trimming,
-  accurate,
-  onAccurateChange,
-  onExport,
 }: {
-  durationMs: number
   inMs: number
   outMs: number
   onSetIn: () => void
   onSetOut: () => void
   onReset: () => void
-  engine: ReturnType<typeof useEngineStatus>
-  trimming: boolean
-  accurate: boolean
-  onAccurateChange: (v: boolean) => void
-  onExport: () => void
 }) {
   return (
-    <>
-      <RailHeader>Trim selection</RailHeader>
+    <div className="flex flex-col gap-3 border-t border-[var(--ic-line)] pt-3">
+      <RailHeader>Selection</RailHeader>
       <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] p-3">
         <Stat label="In" value={formatTimeMs(inMs)} />
         <Stat label="Out" value={formatTimeMs(outMs)} />
@@ -764,41 +956,189 @@ function TrimRail({
       >
         reset to full clip
       </button>
+    </div>
+  )
+}
 
-      <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-[var(--ic-line)] bg-[var(--ic-card)] px-2.5 py-2">
-        <input
-          type="checkbox"
-          checked={accurate}
-          onChange={(e) => onAccurateChange(e.target.checked)}
-          className="mt-0.5 h-3.5 w-3.5 accent-[var(--ic-accent)]"
-        />
-        <span className="flex flex-col gap-0.5">
-          <span className="text-[12px] font-medium text-[var(--ic-ink)]">Frame-accurate</span>
-          <span className="text-[11px] leading-relaxed text-[var(--ic-ink-4)]">
-            {accurate
-              ? 'Re-encodes for exact in/out points. Slower; quality kept high.'
-              : 'Off: instant lossless cut. May snap to nearest keyframe.'}
+function TrimRail({
+  durationMs,
+  inMs,
+  outMs,
+  format,
+  onFormatChange,
+  engine,
+  trimBusy,
+  busy,
+  accurate,
+  onAccurateChange,
+  fps,
+  onFpsChange,
+  width,
+  onWidthChange,
+  onExport,
+}: {
+  durationMs: number
+  inMs: number
+  outMs: number
+  format: 'mp4' | 'gif'
+  onFormatChange: (f: 'mp4' | 'gif') => void
+  engine: ReturnType<typeof useEngineStatus>
+  /** True only when THIS rail is currently encoding — drives the export label. */
+  trimBusy: boolean
+  /** True when ANY encode is running — drives the disabled state across all rails. */
+  busy: boolean
+  accurate: boolean
+  onAccurateChange: (v: boolean) => void
+  fps: number
+  onFpsChange: (v: number) => void
+  width: number
+  onWidthChange: (v: number) => void
+  onExport: () => void
+}) {
+  const FPS_OPTIONS = [10, 15, 24]
+  const WIDTH_OPTIONS = [240, 360, 480, 640]
+  const span = outMs - inMs
+  const tooLongForGif = format === 'gif' && span > 15000
+  const exportLabel =
+    trimBusy
+      ? format === 'gif'
+        ? 'Rendering…'
+        : 'Trimming…'
+      : engine.kind === 'loading'
+        ? 'Loading engine…'
+        : format === 'gif'
+          ? 'Export GIF '
+          : accurate
+            ? 'Export trim (accurate) '
+            : 'Export trim '
+  const footerNote =
+    format === 'gif'
+      ? '100% in your browser'
+      : accurate
+        ? 'Frame-accurate · in your browser'
+        : 'Lossless · in your browser'
+  return (
+    <>
+      <RailHeader>Format</RailHeader>
+      <div
+        role="radiogroup"
+        aria-label="Output format"
+        className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+      >
+        {(['mp4', 'gif'] as const).map((f) => (
+          <button
+            key={f}
+            type="button"
+            role="radio"
+            aria-checked={format === f}
+            onClick={() => onFormatChange(f)}
+            className={`h-7 flex-1 rounded-full px-2.5 transition ${
+              format === f
+                ? 'bg-[var(--ic-ink)] text-[var(--ic-bg)]'
+                : 'text-[var(--ic-ink-3)] hover:text-[var(--ic-ink)]'
+            }`}
+          >
+            {f === 'mp4' ? 'MP4' : 'GIF'}
+          </button>
+        ))}
+      </div>
+
+      {format === 'mp4' ? (
+        <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-[var(--ic-line)] bg-[var(--ic-card)] px-2.5 py-2">
+          <input
+            type="checkbox"
+            checked={accurate}
+            onChange={(e) => onAccurateChange(e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 accent-[var(--ic-accent)]"
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className="text-[12px] font-medium text-[var(--ic-ink)]">Frame-accurate</span>
+            <span className="text-[11px] leading-relaxed text-[var(--ic-ink-4)]">
+              {accurate
+                ? 'Re-encodes for exact in/out points. Slower; quality kept high.'
+                : 'Off: instant lossless cut. May snap to nearest keyframe.'}
+            </span>
           </span>
-        </span>
-      </label>
+        </label>
+      ) : (
+        <>
+          <RailHeader>Frame rate</RailHeader>
+          <div
+            role="radiogroup"
+            aria-label="Frame rate"
+            className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+          >
+            {FPS_OPTIONS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                role="radio"
+                aria-checked={fps === f}
+                onClick={() => onFpsChange(f)}
+                className={`h-7 flex-1 rounded-full px-2.5 transition ${
+                  fps === f
+                    ? 'bg-[var(--ic-ink)] text-[var(--ic-bg)]'
+                    : 'text-[var(--ic-ink-3)] hover:text-[var(--ic-ink)]'
+                }`}
+              >
+                {f} fps
+              </button>
+            ))}
+          </div>
+
+          <RailHeader>Width</RailHeader>
+          <div
+            role="radiogroup"
+            aria-label="Width"
+            className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[10.5px] uppercase tracking-[0.12em]"
+          >
+            {WIDTH_OPTIONS.map((w) => (
+              <button
+                key={w}
+                type="button"
+                role="radio"
+                aria-checked={width === w}
+                onClick={() => onWidthChange(w)}
+                className={`h-7 flex-1 rounded-full px-2 transition ${
+                  width === w
+                    ? 'bg-[var(--ic-ink)] text-[var(--ic-bg)]'
+                    : 'text-[var(--ic-ink-3)] hover:text-[var(--ic-ink)]'
+                }`}
+              >
+                {w}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      <p className="px-1 text-[11px] leading-relaxed text-[var(--ic-ink-4)]">
+        {format === 'gif'
+          ? tooLongForGif
+            ? 'Tip: GIFs over 15s get huge. Trim tighter for sane file sizes.'
+            : 'Two-pass palette generation for clean colors.'
+          : 'Drag the timeline edges to set in/out. Audio kept as-is.'}
+      </p>
 
       <div className="mt-auto flex flex-col gap-2">
         <button
           type="button"
           onClick={onExport}
-          disabled={trimming || engine.kind === 'loading' || outMs <= inMs || outMs - inMs < 100 || (outMs - inMs) >= durationMs}
+          // GIF export is meaningful at any length (re-encodes via palette);
+          // MP4 trim with the full range is a no-op so we still block it.
+          disabled={
+            busy ||
+            engine.kind === 'loading' ||
+            outMs <= inMs ||
+            outMs - inMs < 100 ||
+            (format === 'mp4' && outMs - inMs >= durationMs)
+          }
           className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {trimming
-            ? 'Trimming…'
-            : engine.kind === 'loading'
-              ? 'Loading engine…'
-              : accurate
-                ? 'Export trim (accurate) '
-                : 'Export trim '}
+          {exportLabel}
         </button>
         <p className="text-center font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)]">
-          {accurate ? 'Frame-accurate · in your browser' : 'Lossless · in your browser'}
+          {footerNote}
         </p>
       </div>
     </>
@@ -808,6 +1148,7 @@ function TrimRail({
 function FrameGalleryRail({
   captures,
   engine,
+  busy,
   onExport,
   onExportAll,
   onRemove,
@@ -816,6 +1157,8 @@ function FrameGalleryRail({
 }: {
   captures: Capture[]
   engine: ReturnType<typeof useEngineStatus>
+  /** True when ANY encode is running — disables Export All. */
+  busy: boolean
   onExport: (c: Capture) => void
   onExportAll: () => void
   onRemove: (id: number) => void
@@ -853,7 +1196,11 @@ function FrameGalleryRail({
           </p>
         </div>
       ) : (
-        <div className="flex max-h-80 flex-col gap-2 overflow-y-auto pr-0.5">
+        // flex-1 + min-h-0 lets the list grow to fill the rail's free space
+        // between the header and the bottom Export card, instead of a fixed
+        // 320px window. min-h-0 is the magic that lets a flex child shrink
+        // below its content height so overflow-y-auto can take over.
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
           {captures.map((c) => (
             <div
               key={c.id}
@@ -897,7 +1244,7 @@ function FrameGalleryRail({
         <button
           type="button"
           onClick={onExportAll}
-          disabled={captures.length === 0 || anyExporting || engine.kind === 'loading'}
+          disabled={busy || captures.length === 0 || anyExporting || engine.kind === 'loading'}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {engine.kind === 'loading'
@@ -935,6 +1282,8 @@ type CanvasProps = {
   onCropOffsetChange?: (next: { dx: number; dy: number }) => void
   cropFillMode?: 'crop' | 'fit'
   fitBlurPx?: number
+  fitBackdropType?: 'blur' | 'solid'
+  fitBackdropColor?: string
   encodeProgress?: { label: string; pct: number } | null
 }
 
@@ -958,6 +1307,8 @@ function VideoCanvas({
   onCropOffsetChange,
   cropFillMode,
   fitBlurPx,
+  fitBackdropType,
+  fitBackdropColor,
   encodeProgress,
 }: CanvasProps) {
   const sourceAspect = video.width / video.height
@@ -1049,6 +1400,8 @@ function VideoCanvas({
               frameH={frame.h}
               visible={fitting}
               blurPx={fitBlurPx ?? 24}
+              backdropType={fitBackdropType ?? 'blur'}
+              backdropColor={fitBackdropColor ?? '#000000'}
             />
             {fitting && (
               <div
@@ -1196,18 +1549,24 @@ function FitBackdrop({
   frameH,
   visible,
   blurPx = 24,
+  backdropType = 'blur',
+  backdropColor = '#000000',
 }: {
   videoRef: React.RefObject<HTMLVideoElement | null>
   frameW: number
   frameH: number
   visible: boolean
   blurPx?: number
+  backdropType?: 'blur' | 'solid'
+  backdropColor?: string
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rafRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (!visible) return
+    // Solid mode doesn't need the rAF paint loop — the colored <div> below
+    // does the work via plain CSS background. Skip wiring listeners entirely.
+    if (!visible || backdropType === 'solid') return
     const canvas = canvasRef.current
     const vid = videoRef.current
     if (!canvas || !vid) return
@@ -1267,7 +1626,24 @@ function FitBackdrop({
       vid.removeEventListener('seeked', onSeeked)
       vid.removeEventListener('loadeddata', onLoaded)
     }
-  }, [visible, frameW, frameH, videoRef])
+  }, [visible, frameW, frameH, videoRef, backdropType])
+
+  // Solid backdrop is a static colored <div> — no rAF, no canvas paint. A
+  // radial gradient layer overlays the flat color so the corners fall off,
+  // matching the vignette baked into the export pipeline.
+  if (backdropType === 'solid') {
+    const safeColor = /^#[0-9a-fA-F]{6}$/.test(backdropColor) ? backdropColor : '#000000'
+    return (
+      <div
+        aria-hidden
+        className="absolute inset-0 h-full w-full rounded-md"
+        style={{
+          display: visible ? 'block' : 'none',
+          background: `radial-gradient(ellipse at center, transparent 25%, rgba(0,0,0,0.45) 100%), ${safeColor}`,
+        }}
+      />
+    )
+  }
 
   return (
     <canvas
@@ -1583,12 +1959,17 @@ function CropRail({
   onFillModeChange,
   blurPx,
   onBlurPxChange,
+  backdropType,
+  onBackdropTypeChange,
+  backdropColor,
+  onBackdropColorChange,
   durationMs,
   trimIn,
   trimOut,
   onResetTrim,
   engine,
   cropping,
+  busy,
   onExport,
 }: {
   presetId: string
@@ -1600,12 +1981,19 @@ function CropRail({
   onFillModeChange: (m: 'crop' | 'fit') => void
   blurPx: number
   onBlurPxChange: (v: number) => void
+  backdropType: 'blur' | 'solid'
+  onBackdropTypeChange: (t: 'blur' | 'solid') => void
+  backdropColor: string
+  onBackdropColorChange: (c: string) => void
   durationMs: number
   trimIn: number
   trimOut: number
   onResetTrim: () => void
   engine: ReturnType<typeof useEngineStatus>
+  /** True only when THIS rail is currently encoding — drives the export label. */
   cropping: boolean
+  /** True when ANY encode is running — drives the disabled state. */
+  busy: boolean
   onExport: () => void
 }) {
   const isFit = fillMode === 'fit'
@@ -1651,14 +2039,55 @@ function CropRail({
       {isFit ? (
         <>
           <RailHeader>Bleed</RailHeader>
-          <RailSlider
-            label="Blur"
-            value={blurPx}
-            valueLabel={blurPx <= 12 ? 'soft' : blurPx <= 28 ? 'medium' : 'strong'}
-            min={4}
-            max={48}
-            onChange={onBlurPxChange}
-          />
+          <div className="flex items-center gap-2">
+            <div
+              role="radiogroup"
+              aria-label="Backdrop"
+              className="inline-flex flex-1 items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+            >
+              {(['blur', 'solid'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  role="radio"
+                  aria-checked={backdropType === t}
+                  onClick={() => onBackdropTypeChange(t)}
+                  className={`h-7 flex-1 rounded-full px-2.5 transition ${
+                    backdropType === t
+                      ? 'bg-[var(--ic-ink)] text-[var(--ic-bg)]'
+                      : 'text-[var(--ic-ink-3)] hover:text-[var(--ic-ink)]'
+                  }`}
+                >
+                  {t === 'blur' ? 'Blur' : 'Solid'}
+                </button>
+              ))}
+            </div>
+            {backdropType === 'solid' && (
+              <label
+                className="relative grid h-7 w-7 cursor-pointer place-items-center overflow-hidden rounded-full border border-[var(--ic-line)] hover:border-[var(--ic-ink-4)]"
+                title={`Pick backdrop color (${backdropColor})`}
+                style={{ background: backdropColor }}
+              >
+                <input
+                  type="color"
+                  value={backdropColor}
+                  onChange={(e) => onBackdropColorChange(e.target.value)}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  aria-label="Backdrop color"
+                />
+              </label>
+            )}
+          </div>
+          {backdropType === 'blur' && (
+            <RailSlider
+              label="Blur"
+              value={blurPx}
+              valueLabel={blurPx <= 12 ? 'soft' : blurPx <= 28 ? 'medium' : 'strong'}
+              min={4}
+              max={48}
+              onChange={onBlurPxChange}
+            />
+          )}
           <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] p-3">
             <Stat label="Output" value={`${active.width}×${active.height}`} />
             <SelectionStat
@@ -1702,7 +2131,7 @@ function CropRail({
         <button
           type="button"
           onClick={onExport}
-          disabled={cropping || engine.kind === "loading"}
+          disabled={busy || engine.kind === 'loading'}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {cropping
@@ -1722,50 +2151,45 @@ function CropRail({
 }
 
 
-function CompressRail({
-  target,
-  onTargetChange,
+/**
+ * Left-rail panel for the Compress tool. Shows Original/Target/Output/Saved
+ * stats — read-only context about what compression will produce. Lives next
+ * to Source on the left so the right rail is just the input + Export.
+ *
+ * Also surfaces the trim selection so users discover that they can drag the
+ * timeline edges to compress only a portion (single ffmpeg pass under the hood).
+ */
+function CompressResultPanel({
   targetBytes,
   sourceBytes,
   outputBytes,
-  engine,
   compressing,
-  onExport,
+  durationMs,
+  trimIn,
+  trimOut,
+  onResetTrim,
 }: {
-  target: string
-  onTargetChange: (v: string) => void
   targetBytes: number | null
   sourceBytes: number
   outputBytes: number | null
-  engine: ReturnType<typeof useEngineStatus>
   compressing: boolean
-  onExport: () => void
+  durationMs: number
+  trimIn: number
+  trimOut: number
+  onResetTrim: () => void
 }) {
   const savedPct =
     outputBytes != null ? Math.max(0, Math.round((1 - outputBytes / sourceBytes) * 100)) : null
+  const isTrimmed = trimIn > 0 || trimOut < durationMs - 1
+  const selectedMs = Math.max(0, trimOut - trimIn)
   return (
-    <>
-      <RailHeader>Target size</RailHeader>
-      <div className="flex flex-col gap-2">
-        <input
-          type="text"
-          value={target}
-          onChange={(e) => onTargetChange(e.target.value)}
-          placeholder="10 MB"
-          aria-label="Target size"
-          className="rounded-md border border-[var(--ic-line)] bg-[var(--ic-card)] px-2.5 py-1.5 text-[13px] text-[var(--ic-ink)] placeholder:text-[var(--ic-ink-4)]"
-        />
-        <p className="text-[11px] text-[var(--ic-ink-4)]">
-          Examples: 10 MB · 500 kB · 1024 kB
-        </p>
-      </div>
-
+    <div className="flex flex-col gap-3 border-t border-[var(--ic-line)] pt-3">
       <RailHeader>Result</RailHeader>
       <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] p-3">
         <Stat label="Original" value={formatBytes(sourceBytes)} />
         <Stat
           label="Target"
-          value={targetBytes != null ? formatBytes(targetBytes) : "—"}
+          value={targetBytes != null ? formatBytes(targetBytes) : '—'}
         />
         <Stat
           label="Output"
@@ -1773,9 +2197,15 @@ function CompressRail({
             outputBytes != null
               ? formatBytes(outputBytes)
               : compressing
-                ? "encoding…"
-                : "—"
+                ? 'encoding…'
+                : '—'
           }
+        />
+        <SelectionStat
+          isTrimmed={isTrimmed}
+          selectedMs={selectedMs}
+          durationMs={durationMs}
+          onReset={onResetTrim}
         />
         {savedPct != null && (
           <div className="mt-1 flex items-baseline justify-between border-t border-[var(--ic-line)] pt-2">
@@ -1786,140 +2216,65 @@ function CompressRail({
           </div>
         )}
       </div>
-
-      <p className="px-1 text-[11px] leading-relaxed text-[var(--ic-ink-4)]">
-        Targets your size while keeping the picture quality reasonable. Audio kept where possible.
-      </p>
-
-      <div className="mt-auto flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={onExport}
-          disabled={compressing || engine.kind === "loading" || !targetBytes}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {compressing
-            ? "Compressing…"
-            : engine.kind === "loading"
-              ? "Loading engine…"
-              : "Compress "}
-        </button>
-        <p className="text-center font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)]">
-          100% in your browser
-        </p>
-      </div>
-    </>
+    </div>
   )
 }
 
-function GifRail({
-  durationMs,
-  inMs,
-  outMs,
-  fps,
-  onFpsChange,
-  width,
-  onWidthChange,
+function CompressRail({
+  target,
+  onTargetChange,
+  targetBytes,
   engine,
-  working,
+  compressing,
+  busy,
   onExport,
 }: {
-  durationMs: number
-  inMs: number
-  outMs: number
-  onTrimChange: (next: { inMs: number; outMs: number }) => void
-  fps: number
-  onFpsChange: (v: number) => void
-  width: number
-  onWidthChange: (v: number) => void
+  target: string
+  onTargetChange: (v: string) => void
+  targetBytes: number | null
   engine: ReturnType<typeof useEngineStatus>
-  working: boolean
+  /** True only when THIS rail is currently encoding — drives the export label. */
+  compressing: boolean
+  /** True when ANY encode is running — drives the disabled state. */
+  busy: boolean
   onExport: () => void
 }) {
-  const FPS_OPTIONS = [10, 15, 24]
-  const WIDTH_OPTIONS = [240, 360, 480, 640]
-  const span = outMs - inMs
-  const tooLong = span > 15000
   return (
     <>
-      <RailHeader>GIF settings</RailHeader>
-      <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] p-3">
-        <Stat label="In" value={formatTimeMs(inMs)} />
-        <Stat label="Out" value={formatTimeMs(outMs)} />
-        <div className="mt-1 flex items-baseline justify-between border-t border-[var(--ic-line)] pt-2">
-          <span className="text-[12px] text-[var(--ic-ink-3)]">Duration</span>
-          <span className="font-mono-geist text-[14px] font-semibold text-[var(--ic-accent)]">
-            {formatTimeMs(span)}
-          </span>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <RailHeader>Frame rate</RailHeader>
-        <div
-          role="radiogroup"
-          aria-label="Frame rate"
-          className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
-        >
-          {FPS_OPTIONS.map((f) => (
-            <button
-              key={f}
-              type="button"
-              role="radio"
-              aria-checked={fps === f}
-              onClick={() => onFpsChange(f)}
-              className={`h-7 flex-1 rounded-full px-2.5 transition ${
-                fps === f
-                  ? 'bg-[var(--ic-ink)] text-[var(--ic-bg)]'
-                  : 'text-[var(--ic-ink-3)] hover:text-[var(--ic-ink)]'
-              }`}
-            >
-              {f} fps
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <RailHeader>Width</RailHeader>
-        <div
-          role="radiogroup"
-          aria-label="Width"
-          className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[10.5px] uppercase tracking-[0.12em]"
-        >
-          {WIDTH_OPTIONS.map((w) => (
-            <button
-              key={w}
-              type="button"
-              role="radio"
-              aria-checked={width === w}
-              onClick={() => onWidthChange(w)}
-              className={`h-7 flex-1 rounded-full px-2 transition ${
-                width === w
-                  ? 'bg-[var(--ic-ink)] text-[var(--ic-bg)]'
-                  : 'text-[var(--ic-ink-3)] hover:text-[var(--ic-ink)]'
-              }`}
-            >
-              {w}
-            </button>
-          ))}
-        </div>
+      <RailHeader>Target size</RailHeader>
+      <div className="flex flex-col gap-2">
+        <input
+          type="text"
+          value={target}
+          onChange={(e) => onTargetChange(e.target.value)}
+          // Disable while encoding — the value is captured at call time, but
+          // a stale-looking input mid-encode is confusing.
+          disabled={compressing}
+          placeholder="10 MB"
+          aria-label="Target size"
+          className="rounded-md border border-[var(--ic-line)] bg-[var(--ic-card)] px-2.5 py-1.5 text-[13px] text-[var(--ic-ink)] placeholder:text-[var(--ic-ink-4)] disabled:cursor-not-allowed disabled:opacity-50"
+        />
+        <p className="text-[11px] text-[var(--ic-ink-4)]">
+          Examples: 10 MB · 500 kB · 1024 kB
+        </p>
       </div>
 
       <p className="px-1 text-[11px] leading-relaxed text-[var(--ic-ink-4)]">
-        {tooLong
-          ? 'Tip: GIFs over 15s get huge. Trim tighter for sane file sizes.'
-          : 'Two-pass palette generation for clean colors.'}
+        Targets your size while keeping picture quality reasonable. Drag the timeline edges to compress only a slice. Audio kept where possible.
       </p>
 
       <div className="mt-auto flex flex-col gap-2">
         <button
           type="button"
           onClick={onExport}
-          disabled={working || engine.kind === 'loading' || outMs <= inMs || outMs - inMs < 100 || outMs - inMs >= durationMs}
+          disabled={busy || engine.kind === 'loading' || !targetBytes}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {working ? 'Rendering…' : engine.kind === 'loading' ? 'Loading engine…' : 'Export GIF '}
+          {compressing
+            ? 'Compressing…'
+            : engine.kind === 'loading'
+              ? 'Loading engine…'
+              : 'Compress '}
         </button>
         <p className="text-center font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)]">
           100% in your browser
@@ -1932,18 +2287,25 @@ function GifRail({
 function AudioRail({
   engine,
   working,
+  busy,
   onExtract,
   onMute,
   onReplace,
 }: {
   engine: ReturnType<typeof useEngineStatus>
+  /** True only when THIS rail is currently encoding. */
   working: boolean
+  /** True when ANY encode is running. */
+  busy: boolean
   onExtract: () => void
   onMute: () => void
   onReplace: (file: File) => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
-  const disabled = working || engine.kind === 'loading'
+  const disabled = busy || engine.kind === 'loading'
+  // `working` reserved for showing in-progress state on individual buttons later
+  // — kept on the prop so future polish can flip a spinner on the active one.
+  void working
   return (
     <>
       <RailHeader>Audio track</RailHeader>

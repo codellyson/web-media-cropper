@@ -1,6 +1,8 @@
 import { Link, NavLink, useLocation } from 'react-router-dom'
+import { Download } from 'lucide-react'
 import { LANDINGS } from '@/content/landings'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { usePwaInstall } from '@/hooks/usePwaInstall'
 
 const SHORT_LABEL: Record<string, string> = {
   'youtube-thumbnail': 'YouTube',
@@ -15,6 +17,7 @@ const SHORT_LABEL: Record<string, string> = {
 export function NavBar() {
   const location = useLocation()
   const onStudio = location.pathname.startsWith('/studio')
+  const { canInstall, promptInstall } = usePwaInstall()
   return (
     <header className="sticky top-0 z-30 border-b border-[var(--ic-line)] bg-[var(--ic-bg)]/85 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-[1100px] items-center justify-between gap-6 px-6">
@@ -48,6 +51,18 @@ export function NavBar() {
         </nav>
 
         <div className="flex items-center gap-1.5">
+          {canInstall && (
+            <button
+              type="button"
+              onClick={() => void promptInstall()}
+              aria-label="Install app"
+              title="Install Cropper as a standalone app"
+              className="hidden h-8 items-center gap-1.5 rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] px-3 text-[12px] font-medium text-[var(--ic-ink-2)] transition hover:border-[var(--ic-ink-4)] hover:text-[var(--ic-ink)] sm:inline-flex"
+            >
+              <Download size={13} aria-hidden />
+              Install
+            </button>
+          )}
           <ThemeToggle />
           {onStudio ? (
             <Link

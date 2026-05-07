@@ -6,6 +6,8 @@ type FitPreviewProps = {
   sourceHeight: number
   aspect: number
   blurPx?: number
+  backdropType?: 'blur' | 'solid'
+  backdropColor?: string
 }
 
 /**
@@ -21,6 +23,8 @@ export function FitPreview({
   sourceHeight,
   aspect,
   blurPx = 24,
+  backdropType = 'blur',
+  backdropColor = '#000000',
 }: FitPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -45,21 +49,37 @@ export function FitPreview({
 
       ctx.clearRect(0, 0, w, h)
 
-      // Cover-fit blurred backdrop.
-      const coverScale = Math.max(w / sourceWidth, h / sourceHeight)
-      const bgW = sourceWidth * coverScale
-      const bgH = sourceHeight * coverScale
-      const bgX = (w - bgW) / 2
-      const bgY = (h - bgH) / 2
-      const blurScaled = blurPx * dpr
-      const bleed = blurScaled * 2
-      ctx.filter = `blur(${blurScaled}px)`
-      ctx.drawImage(image, bgX - bleed, bgY - bleed, bgW + bleed * 2, bgH + bleed * 2)
-      ctx.filter = 'none'
+      if (backdropType === 'solid') {
+        // Solid: flat color + radial vignette. Mirrors the worker render so
+        // preview and export look the same.
+        const color = /^#[0-9a-fA-F]{6}$/.test(backdropColor) ? backdropColor : '#000000'
+        ctx.fillStyle = color
+        ctx.fillRect(0, 0, w, h)
+        const cx = w / 2
+        const cy = h / 2
+        const maxR = Math.sqrt(cx * cx + cy * cy)
+        const vignette = ctx.createRadialGradient(cx, cy, maxR * 0.25, cx, cy, maxR)
+        vignette.addColorStop(0, 'rgba(0,0,0,0)')
+        vignette.addColorStop(1, 'rgba(0,0,0,0.45)')
+        ctx.fillStyle = vignette
+        ctx.fillRect(0, 0, w, h)
+      } else {
+        // Cover-fit blurred backdrop.
+        const coverScale = Math.max(w / sourceWidth, h / sourceHeight)
+        const bgW = sourceWidth * coverScale
+        const bgH = sourceHeight * coverScale
+        const bgX = (w - bgW) / 2
+        const bgY = (h - bgH) / 2
+        const blurScaled = blurPx * dpr
+        const bleed = blurScaled * 2
+        ctx.filter = `blur(${blurScaled}px)`
+        ctx.drawImage(image, bgX - bleed, bgY - bleed, bgW + bleed * 2, bgH + bleed * 2)
+        ctx.filter = 'none'
 
-      // Dark scrim.
-      ctx.fillStyle = 'rgba(0,0,0,0.18)'
-      ctx.fillRect(0, 0, w, h)
+        // Dark scrim.
+        ctx.fillStyle = 'rgba(0,0,0,0.18)'
+        ctx.fillRect(0, 0, w, h)
+      }
 
       // Contain-fit source on top.
       const fitScale = Math.min(w / sourceWidth, h / sourceHeight)
@@ -89,7 +109,7 @@ export function FitPreview({
       const ro = (wrap as unknown as { __ro?: ResizeObserver }).__ro
       ro?.disconnect()
     }
-  }, [imageUrl, sourceWidth, sourceHeight, aspect, blurPx])
+  }, [imageUrl, sourceWidth, sourceHeight, aspect, blurPx, backdropType, backdropColor])
 
   return (
     <div ref={wrapRef} className="relative h-full w-full overflow-hidden rounded-lg bg-black">

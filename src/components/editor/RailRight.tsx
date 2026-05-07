@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { OutputFormat } from '@/lib/crop'
-import type { FillMode } from '@/lib/cropClient'
+import type { BackdropType, FillMode } from '@/lib/cropClient'
 import { avifEncodeSupported, formatBytes } from '@/lib/crop'
 import { RailSlider } from '@/components/editor/EditorShell'
 
@@ -15,6 +15,10 @@ type RailRightProps = {
   onFillModeChange: (m: FillMode) => void
   blurPx: number
   onBlurPxChange: (v: number) => void
+  backdropType: BackdropType
+  onBackdropTypeChange: (t: BackdropType) => void
+  backdropColor: string
+  onBackdropColorChange: (c: string) => void
   subjectLock: number
   onSubjectLockChange: (v: number) => void
   padding: number
@@ -46,6 +50,10 @@ export function RailRight({
   onFillModeChange,
   blurPx,
   onBlurPxChange,
+  backdropType,
+  onBackdropTypeChange,
+  backdropColor,
+  onBackdropColorChange,
   subjectLock,
   onSubjectLockChange,
   padding,
@@ -106,14 +114,22 @@ export function RailRight({
       {isFit ? (
         <>
           <RailHeader>Bleed</RailHeader>
-          <RailSlider
-            label="Blur"
-            value={blurPx}
-            valueLabel={blurLabel(blurPx)}
-            min={4}
-            max={48}
-            onChange={onBlurPxChange}
+          <BackdropPicker
+            type={backdropType}
+            onTypeChange={onBackdropTypeChange}
+            color={backdropColor}
+            onColorChange={onBackdropColorChange}
           />
+          {backdropType === 'blur' && (
+            <RailSlider
+              label="Blur"
+              value={blurPx}
+              valueLabel={blurLabel(blurPx)}
+              min={4}
+              max={48}
+              onChange={onBlurPxChange}
+            />
+          )}
         </>
       ) : (
         <>
@@ -223,6 +239,66 @@ function RailHeader({ children }: { children: React.ReactNode }) {
   return (
     <div className="px-0.5 pt-1 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--ic-ink-4)]">
       {children}
+    </div>
+  )
+}
+
+/**
+ * Two-state backdrop picker for fit mode: Blur (existing default, tracks Blur
+ * slider) or Solid (color swatch + native color input). Inline color input
+ * uses a translucent overlay so the OS color picker pops on click without us
+ * shipping a custom picker.
+ */
+function BackdropPicker({
+  type,
+  onTypeChange,
+  color,
+  onColorChange,
+}: {
+  type: BackdropType
+  onTypeChange: (t: BackdropType) => void
+  color: string
+  onColorChange: (c: string) => void
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        role="radiogroup"
+        aria-label="Backdrop"
+        className="inline-flex flex-1 items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+      >
+        {(['blur', 'solid'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="radio"
+            aria-checked={type === t}
+            onClick={() => onTypeChange(t)}
+            className={`h-7 flex-1 rounded-full px-2.5 transition ${
+              type === t
+                ? 'bg-[var(--ic-ink)] text-[var(--ic-bg)]'
+                : 'text-[var(--ic-ink-3)] hover:text-[var(--ic-ink)]'
+            }`}
+          >
+            {t === 'blur' ? 'Blur' : 'Solid'}
+          </button>
+        ))}
+      </div>
+      {type === 'solid' && (
+        <label
+          className="relative grid h-7 w-7 cursor-pointer place-items-center overflow-hidden rounded-full border border-[var(--ic-line)] hover:border-[var(--ic-ink-4)]"
+          title={`Pick backdrop color (${color})`}
+          style={{ background: color }}
+        >
+          <input
+            type="color"
+            value={color}
+            onChange={(e) => onColorChange(e.target.value)}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            aria-label="Backdrop color"
+          />
+        </label>
+      )}
     </div>
   )
 }
