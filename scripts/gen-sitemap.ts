@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { LANDINGS } from '../src/content/landings'
 
-const SITE_URL = (process.env.VITE_SITE_URL ?? 'https://cropper.kreativekorna.com').replace(/\/$/, '')
+const SITE_URL = (process.env.VITE_SITE_URL ?? 'https://wmc.kreativekorna.com').replace(/\/$/, '')
 
 const paths = ['/', ...LANDINGS.map((l) => `/${l.slug}/`)]
 

@@ -6,7 +6,7 @@ import { NavBar } from '@/components/NavBar'
 
 const SITE_URL =
   (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SITE_URL as string | undefined)) ||
-  'https://cropper.kreativekorna.com'
+  'https://wmc.kreativekorna.com'
 
 function md(input: string): string {
   return marked.parse(input, { async: false }) as string
