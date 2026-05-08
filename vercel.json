@@ -2,7 +2,10 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/((?!.*\\.[a-zA-Z0-9]+$).*)", "destination": "/index.html" }
+    { "source": "/studio", "destination": "/index.html" },
+    { "source": "/studio/:path*", "destination": "/index.html" },
+    { "source": "/batch", "destination": "/index.html" },
+    { "source": "/batch/:path*", "destination": "/index.html" }
   ],
   "headers": [
     {
