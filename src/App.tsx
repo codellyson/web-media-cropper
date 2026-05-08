@@ -304,11 +304,11 @@ export default function App() {
           <link rel="canonical" href="https://wmc.kreativekorna.com/" />
           <meta property="og:type" content="website" />
           <meta property="og:url" content="https://wmc.kreativekorna.com/" />
-          <meta property="og:title" content="WMC | Crop once, post everywhere — every platform from one file" />
+          <meta property="og:title" content="WMC | Crop once, post everywhere — every platform, one file" />
           <meta property="og:description" content="Drop a clip or image — WMC reframes it for TikTok, Reels, Shorts, Feed, YouTube and X. In your browser, no upload." />
           <meta property="og:image" content="https://wmc.kreativekorna.com/og.png" />
           <meta name="twitter:card" content="summary_large_image" />
-          <meta name="twitter:title" content="WMC | Crop once, post everywhere — every platform from one file" />
+          <meta name="twitter:title" content="WMC | Crop once, post everywhere — every platform, one file" />
           <meta name="twitter:description" content="Drop a clip or image — WMC reframes it for every platform. In your browser, no upload." />
           <meta name="twitter:image" content="https://wmc.kreativekorna.com/og.png" />
         </Head>
