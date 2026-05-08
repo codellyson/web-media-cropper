@@ -1,12 +1,15 @@
 type EventPayload = Record<string, string | number | boolean>
 
-// Plausible is loaded by index.html when VITE_PLAUSIBLE_DOMAIN is set at build time.
-// In dev or when no domain is configured, this is a no-op.
+// Google Analytics (gtag.js) is loaded by index.html when VITE_GA_ID is set at
+// build time. In dev, or when no measurement ID is configured, this is a no-op.
+//
+// The gtag('config', ...) call in index.html fires the initial page_view; SPA
+// route changes are picked up by GA4's Enhanced Measurement → Page views
+// (history changes), which is enabled by default for new GA4 properties.
 export function track(event: string, payload?: EventPayload) {
   if (import.meta.env.DEV) return
-  const plausible = (window as typeof window & { plausible?: (e: string, o?: { props?: EventPayload }) => void })
-    .plausible
-  if (plausible) {
-    plausible(event, payload ? { props: payload } : undefined)
-  }
+  const gtag = (
+    window as typeof window & { gtag?: (cmd: 'event', name: string, params?: EventPayload) => void }
+  ).gtag
+  if (gtag) gtag('event', event, payload)
 }

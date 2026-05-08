@@ -12,8 +12,7 @@
     "typecheck": "tsc -b",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "preview": "vite preview",
-    "deploy": "wrangler pages deploy dist --project-name=web-media-cropper"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",
@@ -57,7 +56,6 @@
     "typescript-eslint": "^8.58.2",
     "vite": "^8.0.10",
     "vite-plugin-pwa": "^1.2.0",
-    "workbox-window": "^7.4.0",
-    "wrangler": "^4.84.1"
+    "workbox-window": "^7.4.0"
   }
 }

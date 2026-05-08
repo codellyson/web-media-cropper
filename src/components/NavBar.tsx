@@ -2,6 +2,7 @@ import { Link, NavLink, useLocation } from 'react-router-dom'
 import { Download } from 'lucide-react'
 import { LANDINGS } from '@/content/landings'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { Logo } from '@/components/Logo'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
 
 const SHORT_LABEL: Record<string, string> = {
@@ -23,13 +24,10 @@ export function NavBar() {
       <div className="mx-auto flex h-14 max-w-[1100px] items-center justify-between gap-6 px-6">
         <Link
           to="/"
-          className="flex items-center gap-2 text-[14px] font-semibold tracking-tight text-[var(--ic-ink)]"
+          aria-label="Cropper — home"
+          className="flex items-center text-[var(--ic-ink)]"
         >
-          <span
-            aria-hidden
-            className="block h-4 w-4 rounded-[4px] bg-[var(--ic-ink)]"
-          />
-          WMC
+          <Logo className="h-5 w-auto" />
         </Link>
 
         <nav className="hidden items-center gap-5 md:flex" aria-label="Platform presets">
