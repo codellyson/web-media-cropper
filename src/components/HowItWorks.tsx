@@ -7,18 +7,18 @@ type Feature = {
 const FEATURES: Feature[] = [
   {
     kicker: '01',
-    title: 'Stays on your device',
-    body: 'Mediapipe, ffmpeg, libheif, and Pica all run in the browser via WebAssembly. Files never leave your machine — sensitive content stays sensitive.',
+    title: 'Nothing leaves your machine',
+    body: 'Crop NDA footage, screen-recordings, anything sensitive — nothing uploaded, nothing logged. Works offline once loaded.',
   },
   {
     kicker: '02',
-    title: 'Every preset, one click',
-    body: 'Reels, TikTok, IG, YouTube, X, LinkedIn, OG. Export one or batch them all to a zip. Drop a 4K video and get every aspect ratio with the subject centered.',
+    title: 'One source, every platform',
+    body: 'Drop a 4K master once. Pull Reels, TikTok, IG, YouTube, X, LinkedIn, OG — each with the subject in the right place. Single export, or batch the lot to a zip.',
   },
   {
     kicker: '03',
-    title: 'Pixel-perfect output',
-    body: 'Lanczos resampling via Pica. EXIF preserved or stripped on demand. HEIC and AVIF in, JPG/PNG/WebP/MP4 out. Built for delivery, not previews.',
+    title: 'Ready to publish',
+    body: 'Sharp at the actual export size, not the blurry resample most browser tools ship. Strip EXIF when you don’t want location tags following an asset onto Twitter. Reads HEIC and AVIF, outputs JPG/PNG/WebP/MP4.',
   },
 ]
 

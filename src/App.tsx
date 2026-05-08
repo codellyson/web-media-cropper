@@ -299,16 +299,16 @@ export default function App() {
     return (
       <div className="flex min-h-dvh flex-col bg-background text-foreground">
         <Head>
-          <title>WMC — Smart Multi-Format Video & Image Resizer with Subject-Aware Cropping. Free Online Tool</title>
+          <title>WMC | Crop once, post everywhere — multi-format video & image cropper</title>
           <meta name="description" content="Drop a clip or image — WMC reframes it for TikTok, Reels, Shorts, Feed, YouTube and X with subject-aware cropping. In your browser, no upload." />
           <link rel="canonical" href="https://cropper.kreativekorna.com/" />
           <meta property="og:type" content="website" />
           <meta property="og:url" content="https://cropper.kreativekorna.com/" />
-          <meta property="og:title" content="WMC — Smart Multi-Format Video & Image Resizer with Subject-Aware Cropping" />
+          <meta property="og:title" content="WMC | Crop once, post everywhere" />
           <meta property="og:description" content="Drop a clip or image — WMC reframes it for TikTok, Reels, Shorts, Feed, YouTube and X. In your browser, no upload." />
           <meta property="og:image" content="https://cropper.kreativekorna.com/og.png" />
           <meta name="twitter:card" content="summary_large_image" />
-          <meta name="twitter:title" content="WMC — Smart Multi-Format Video & Image Resizer" />
+          <meta name="twitter:title" content="WMC | Crop once, post everywhere" />
           <meta name="twitter:description" content="Drop a clip or image — WMC reframes it for every platform. In your browser, no upload." />
           <meta name="twitter:image" content="https://cropper.kreativekorna.com/og.png" />
         </Head>

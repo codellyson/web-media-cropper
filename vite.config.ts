@@ -14,8 +14,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'Cropper',
-        short_name: 'Cropper',
+        name: 'WMC | Crop once, post everywhere',
+        short_name: 'WMC',
         description:
           'Crop any image to any platform size, right in your browser. Nothing uploaded.',
         theme_color: '#0a0a0a',

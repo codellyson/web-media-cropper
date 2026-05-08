@@ -24,7 +24,7 @@ export function NavBar() {
       <div className="mx-auto flex h-14 max-w-[1100px] items-center justify-between gap-6 px-6">
         <Link
           to="/"
-          aria-label="Cropper — home"
+          aria-label="WMC — home"
           className="flex items-center text-[var(--ic-ink)]"
         >
           <Logo className="h-5 w-auto" />
@@ -54,7 +54,7 @@ export function NavBar() {
               type="button"
               onClick={() => void promptInstall()}
               aria-label="Install app"
-              title="Install Cropper as a standalone app"
+              title="Install WMC as a standalone app"
               className="hidden h-8 items-center gap-1.5 rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] px-3 text-[12px] font-medium text-[var(--ic-ink-2)] transition hover:border-[var(--ic-ink-4)] hover:text-[var(--ic-ink)] sm:inline-flex"
             >
               <Download size={13} aria-hidden />

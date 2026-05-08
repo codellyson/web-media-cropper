@@ -195,9 +195,9 @@ export function LandingHero({ onFile, onBlob: _onBlob }: LandingHeroProps) {
           </div>
 
           <h1 className="text-center text-[clamp(40px,6.5vw,84px)] font-bold leading-[1.04] tracking-[-0.025em] text-[var(--ic-ink)]">
-            It sees the subject.
+            Crop once,
             <br />
-            <span className="font-semibold text-[var(--ic-ink-3)]">It keeps it in shot.</span>
+            <span className="font-semibold text-[var(--ic-ink-3)]">post everywhere.</span>
           </h1>
 
           <p className="mx-auto mt-6 max-w-[560px] text-center text-[16px] leading-[1.55] text-[var(--ic-ink-2)]">

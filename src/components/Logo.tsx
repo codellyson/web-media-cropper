@@ -13,7 +13,7 @@ export function Logo(props: SVGProps<SVGSVGElement>) {
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 380 130"
       role="img"
-      aria-label="Cropper"
+      aria-label="WMC"
       {...props}
     >
       <path
