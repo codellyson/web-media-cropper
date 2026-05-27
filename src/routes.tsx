@@ -1,6 +1,6 @@
 import type { RouteRecord } from 'vite-react-ssg'
 import App from '@/App'
-import LandingPage from '@/pages/LandingPage'
+import LandingPage from '@/landing/LandingPage'
 import { EngineBadge } from '@/components/EngineBadge'
 import { LANDINGS } from '@/content/landings'
 

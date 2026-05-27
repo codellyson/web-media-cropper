@@ -4,15 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite-react-ssg build && tsx scripts/gen-sitemap.ts",
-    "build:app": "tsc -b && vite-react-ssg build",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "dev:vite": "vite",
+    "build:vite": "tsc -b && vite-react-ssg build && tsx scripts/gen-sitemap.ts",
     "build:sitemap": "tsx scripts/gen-sitemap.ts",
     "lint": "eslint .",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b --noEmit",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "preview": "vite preview"
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",
@@ -25,6 +26,7 @@
     "heic2any": "^0.0.4",
     "jszip": "^3.10.1",
     "lucide-react": "^1.9.0",
+    "next": "^16.2.6",
     "pica": "^9.0.1",
     "piexifjs": "^1.0.6",
     "react": "^19.2.5",
@@ -39,6 +41,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@tailwindcss/postcss": "^4.3.0",
     "@tailwindcss/vite": "^4.2.4",
     "@types/node": "^24.12.2",
     "@types/pica": "^9.0.5",
@@ -50,6 +53,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.5.0",
     "marked": "^18.0.2",
+    "postcss": "^8.5.15",
     "prettier": "^3.8.3",
     "tailwindcss": "^4.2.4",
     "tsx": "^4.21.0",
