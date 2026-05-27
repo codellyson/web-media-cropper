@@ -1,4 +1,3 @@
-import CropWorker from './cropWorker?worker'
 import type { WorkerCropRequest, WorkerCropResponse } from './cropWorker'
 import type { CropBox, OutputFormat, OutputSize } from './crop'
 
@@ -6,9 +5,12 @@ let worker: Worker | null = null
 let nextId = 1
 const pending = new Map<number, { resolve: (b: Blob) => void; reject: (e: Error) => void }>()
 
+// Vite's `import CropWorker from './cropWorker?worker'` syntax doesn't exist
+// in Next.js. The portable equivalent is `new Worker(new URL(...))` with the
+// module form; webpack/turbopack pick the worker up and bundle it correctly.
 function getWorker(): Worker {
   if (worker) return worker
-  worker = new CropWorker()
+  worker = new Worker(new URL('./cropWorker.ts', import.meta.url), { type: 'module' })
   worker.onmessage = (e: MessageEvent<WorkerCropResponse>) => {
     const entry = pending.get(e.data.id)
     if (!entry) return

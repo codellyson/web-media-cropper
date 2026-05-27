@@ -1,5 +1,7 @@
+'use client'
+
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { computeFocalDetection, type FocalPoint } from '@/lib/smartCrop'
 import { SubjectStrip } from '@/components/SubjectStrip'
 
@@ -243,7 +245,7 @@ export function LandingHero({ onFile, onBlob: _onBlob }: LandingHeroProps) {
                 </>
               )}
               <Link
-                to="/batch"
+                href="/batch"
                 className="inline-flex items-center gap-1 transition hover:text-[var(--ic-ink-2)]"
               >
                 batch many files <span aria-hidden></span>

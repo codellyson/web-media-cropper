@@ -1,6 +1,7 @@
+'use client'
+
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Head } from 'vite-react-ssg'
+import Link from 'next/link'
 import { NavBar } from '@/components/NavBar'
 
 type StudioEmptyProps = {
@@ -44,14 +45,6 @@ export function StudioEmpty({ onFile, onBlob, loading, error }: StudioEmptyProps
 
   return (
     <div className="flex min-h-dvh flex-col bg-[var(--ic-bg)] text-[var(--ic-ink)]">
-      <Head>
-        <title>Studio · WMC</title>
-        <meta
-          name="description"
-          content="Subject-aware multi-platform crop. Drop a file to start. In your browser, no upload."
-        />
-        <meta name="robots" content="noindex" />
-      </Head>
       <NavBar />
 
       <input
@@ -128,7 +121,7 @@ export function StudioEmpty({ onFile, onBlob, loading, error }: StudioEmptyProps
 
             <div className="mt-7 flex flex-wrap items-center justify-center gap-3 text-[13px] text-[var(--ic-ink-3)]">
               <Link
-                to="/"
+                href="/"
                 onClick={(e) => e.stopPropagation()}
                 className="transition hover:text-[var(--ic-ink)]"
               >
@@ -140,7 +133,7 @@ export function StudioEmpty({ onFile, onBlob, loading, error }: StudioEmptyProps
                 style={{ opacity: 0.6 }}
               />
               <Link
-                to="/batch"
+                href="/batch"
                 onClick={(e) => e.stopPropagation()}
                 className="transition hover:text-[var(--ic-ink)]"
               >

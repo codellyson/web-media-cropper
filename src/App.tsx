@@ -1,6 +1,7 @@
+'use client'
+
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
-import { Head } from 'vite-react-ssg'
+import { usePathname, useRouter } from 'next/navigation'
 import { NavBar } from '@/components/NavBar'
 import { CropStage } from '@/components/CropStage'
 import { CustomSizeInput } from '@/components/CustomSizeInput'
@@ -56,36 +57,34 @@ function readInitialPreset(): string {
 export default function App() {
   const { state, loadFile, loadBlob, reset } = useImageSource()
   const [tool, setToolInternal] = useState<EditorTool>('crop')
-  const navigate = useNavigate()
-  const location = useLocation()
-  const path = location.pathname
+  const router = useRouter()
+  const pathname = usePathname() ?? '/'
+  const path = pathname
   const batchMode = path === '/batch'
 
   const setTool = (next: EditorTool) => {
     setToolInternal(next)
     if (state.status === 'ready') {
-      if (next === 'compress' && path !== '/studio/compress') navigate('/studio/compress')
-      else if (next === 'crop' && path !== '/studio') navigate('/studio')
+      if (next === 'compress' && path !== '/studio/compress') router.push('/studio/compress')
+      else if (next === 'crop' && path !== '/studio') router.push('/studio')
     }
   }
 
   useEffect(() => {
     if (batchMode) return
     if (state.status === 'video' && path !== '/studio/video') {
-      navigate('/studio/video', { replace: true })
+      router.replace('/studio/video')
     } else if (state.status === 'ready') {
-      if (tool === 'compress' && path !== '/studio/compress')
-        navigate('/studio/compress', { replace: true })
-      else if (tool !== 'compress' && !path.startsWith('/studio'))
-        navigate('/studio', { replace: true })
+      if (tool === 'compress' && path !== '/studio/compress') router.replace('/studio/compress')
+      else if (tool !== 'compress' && !path.startsWith('/studio')) router.replace('/studio')
     } else if (
       (state.status === 'idle' || state.status === 'error') &&
       (path === '/studio/compress' || path === '/studio/video')
     ) {
       // Sub-route fall-through: no file means we drop back to bare /studio empty state.
-      navigate('/studio', { replace: true })
+      router.replace('/studio')
     }
-  }, [state.status, batchMode, path, tool, navigate])
+  }, [state.status, batchMode, path, tool, router])
   const [presetId, setPresetId] = useState<string | null>(() => readInitialPreset())
   const [custom, setCustom] = useState<{ width: number; height: number } | null>(null)
   const [format, setFormat] = useState<OutputFormat>('png')
@@ -226,14 +225,6 @@ export default function App() {
   if (batchMode) {
     return (
       <div className="flex min-h-dvh flex-col bg-[var(--ic-bg)] text-[var(--ic-ink)]">
-        <Head>
-          <title>Batch crop · WMC</title>
-          <meta
-            name="description"
-            content="Drop multiple files, pick presets, download a zip with every (file × preset) crop. Subject-aware, in your browser."
-          />
-          <meta name="robots" content="noindex" />
-        </Head>
         <NavBar />
         <main className="flex flex-1 flex-col">
           <BatchView />
@@ -255,11 +246,6 @@ export default function App() {
   if (state.status === 'video') {
     return (
       <div className="flex min-h-dvh flex-col bg-background text-foreground">
-        <Head>
-          <title>Video editor · WMC</title>
-          <meta name="description" content="Trim, crop, compress, GIF, and audio extract — for video, in your browser." />
-          <meta name="robots" content="noindex" />
-        </Head>
         <NavBar />
 
         <main className="mx-auto flex w-full max-w-[1320px] flex-1 flex-col px-8 py-8">
@@ -298,20 +284,6 @@ export default function App() {
     }
     return (
       <div className="flex min-h-dvh flex-col bg-background text-foreground">
-        <Head>
-          <title>WMC | Crop once, post everywhere — multi-format video & image cropper</title>
-          <meta name="description" content="Drop a clip or image — WMC reframes it for TikTok, Reels, Shorts, Feed, YouTube and X with subject-aware cropping. In your browser, no upload." />
-          <link rel="canonical" href="https://wmc.kreativekorna.com/" />
-          <meta property="og:type" content="website" />
-          <meta property="og:url" content="https://wmc.kreativekorna.com/" />
-          <meta property="og:title" content="WMC | Crop once, post everywhere — every platform, one file" />
-          <meta property="og:description" content="Drop a clip or image — WMC reframes it for TikTok, Reels, Shorts, Feed, YouTube and X. In your browser, no upload." />
-          <meta property="og:image" content="https://wmc.kreativekorna.com/og.png" />
-          <meta name="twitter:card" content="summary_large_image" />
-          <meta name="twitter:title" content="WMC | Crop once, post everywhere — every platform, one file" />
-          <meta name="twitter:description" content="Drop a clip or image — WMC reframes it for every platform. In your browser, no upload." />
-          <meta name="twitter:image" content="https://wmc.kreativekorna.com/og.png" />
-        </Head>
         <NavBar />
         <LandingHero onFile={loadFile} onBlob={loadBlob} />
         {state.status === 'loading' && (
