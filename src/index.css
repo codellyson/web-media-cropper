@@ -21,12 +21,10 @@
   --ic-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.02);
   --ic-shadow-lg: 0 30px 60px -20px rgba(0, 0, 0, 0.18), 0 10px 20px -10px rgba(0, 0, 0, 0.08);
   --ic-shadow-xl: 0 50px 100px -30px rgba(0, 0, 0, 0.22), 0 20px 40px -20px rgba(0, 0, 0, 0.1);
-  /* Uppercase letter-spacing scale. Three semantic purposes:
-     - eyebrow: section labels (RailHeader)
-     - radio:   segmented controls / radio button groups
-     - hint:    small footnotes, ghost links, mobile-sheet captions */
+  /* Uppercase letter-spacing tokens, kept for the few remaining
+     small-caps surfaces (FormatMarquee on the landing, EngineBadge dev tag,
+     SubjectStrip overlay). The studio rails moved to sentence-case sans-serif. */
   --ic-tracking-eyebrow: 0.08em;
-  --ic-tracking-radio: 0.12em;
   --ic-tracking-hint: 0.05em;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

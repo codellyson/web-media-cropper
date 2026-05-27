@@ -807,7 +807,7 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
             <button
               type="button"
               onClick={capture}
-              className="inline-flex items-center gap-2 rounded-md border border-[var(--ic-accent)] bg-[var(--ic-accent-tint)] px-2.5 py-1 font-mono-geist text-[11px] font-semibold uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-accent)] hover:brightness-110"
+              className="inline-flex items-center gap-2 rounded-md border border-[var(--ic-accent)] bg-[var(--ic-accent-tint)] px-2.5 py-1 text-[12px] font-semibold text-[var(--ic-accent)] hover:brightness-110"
             >
               <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--ic-accent)' }} />
               Capture frame
@@ -899,7 +899,7 @@ function FrameBulkPanel({
           ? `Capturing ${done}/${total}…`
           : `Capture every ${intervalLabel}`}
         {!capturing && (
-          <span className="font-mono-geist text-[10.5px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)]">
+          <span className="text-[12px] text-[var(--ic-ink-4)]">
             ~{expected}
           </span>
         )}
@@ -942,14 +942,14 @@ function TrimSelectionPanel({
         <button
           type="button"
           onClick={onSetIn}
-          className="rounded-md border border-[var(--ic-line)] bg-[var(--ic-card)] px-2 py-1.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-2)] hover:bg-[var(--ic-bg-3)]"
+          className="rounded-md border border-[var(--ic-line)] bg-[var(--ic-card)] px-2 py-1.5 text-[12px] text-[var(--ic-ink-2)] hover:bg-[var(--ic-bg-3)]"
         >
           Set IN [{`{`}
         </button>
         <button
           type="button"
           onClick={onSetOut}
-          className="rounded-md border border-[var(--ic-line)] bg-[var(--ic-card)] px-2 py-1.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-2)] hover:bg-[var(--ic-bg-3)]"
+          className="rounded-md border border-[var(--ic-line)] bg-[var(--ic-card)] px-2 py-1.5 text-[12px] text-[var(--ic-ink-2)] hover:bg-[var(--ic-bg-3)]"
         >
           Set OUT {`}`}]
         </button>
@@ -957,7 +957,7 @@ function TrimSelectionPanel({
       <button
         type="button"
         onClick={onReset}
-        className="self-start font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
+        className="self-start text-[12px] text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
       >
         reset to full clip
       </button>
@@ -1018,17 +1018,17 @@ function TrimRail({
             : 'Export trim '
   const footerNote =
     format === 'gif'
-      ? '100% in your browser'
+      ? 'Runs in your browser.'
       : accurate
-        ? 'Frame-accurate · in your browser'
-        : 'Lossless · in your browser'
+        ? 'Frame-accurate. Runs in your browser.'
+        : 'Lossless. Runs in your browser.'
   return (
     <>
       <RailHeader>Format</RailHeader>
       <div
         role="radiogroup"
         aria-label="Output format"
-        className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
+        className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 text-[12px] font-medium"
       >
         {(['mp4', 'gif'] as const).map((f) => (
           <button
@@ -1071,7 +1071,7 @@ function TrimRail({
           <div
             role="radiogroup"
             aria-label="Frame rate"
-            className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
+            className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 text-[12px] font-medium"
           >
             {FPS_OPTIONS.map((f) => (
               <button
@@ -1095,7 +1095,7 @@ function TrimRail({
           <div
             role="radiogroup"
             aria-label="Width"
-            className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[10.5px] uppercase tracking-[var(--ic-tracking-radio)]"
+            className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 text-[11.5px] font-medium"
           >
             {WIDTH_OPTIONS.map((w) => (
               <button
@@ -1170,12 +1170,12 @@ function FrameGalleryRail({
   return (
     <>
       <div className="flex items-baseline justify-between">
-        <RailHeader>Captured frames · {captures.length}</RailHeader>
+        <RailHeader>Captured frames ({captures.length})</RailHeader>
         {captures.length > 0 && (
           <button
             type="button"
             onClick={onClear}
-            className="font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
+            className="text-[12px] text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
           >
             clear
           </button>
@@ -1184,7 +1184,7 @@ function FrameGalleryRail({
 
       {captures.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--ic-line)] p-4 text-center">
-          <span className="font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)]">
+          <span className="text-[12px] text-[var(--ic-ink-4)]">
             no frames yet
           </span>
           <p className="text-[11px] leading-relaxed text-[var(--ic-ink-3)]">
@@ -1223,7 +1223,7 @@ function FrameGalleryRail({
                   type="button"
                   onClick={() => onExport(c)}
                   disabled={c.exporting}
-                  className="self-start font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-accent)] hover:brightness-110 disabled:opacity-50"
+                  className="self-start text-[12px] text-[var(--ic-accent)] hover:brightness-110 disabled:opacity-50"
                 >
                   {c.exporting ? 'exporting…' : 'export PNG'}
                 </button>
@@ -1253,7 +1253,7 @@ function FrameGalleryRail({
               : `Export all ${captures.length || ''}`.trim()}{' '}
 
         </RailExportButton>
-        <RailFooterNote>Native resolution · in your browser</RailFooterNote>
+        <RailFooterNote>Native resolution. Runs in your browser.</RailFooterNote>
       </div>
     </>
   )
@@ -1684,7 +1684,7 @@ function SelectionStat({
             type="button"
             onClick={onReset}
             aria-label="Reset trim"
-            className="font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
+            className="text-[12px] text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
           >
             reset
           </button>
@@ -1844,7 +1844,7 @@ function CropOverlay({
         })}
         {label && (
           <span
-            className="absolute -top-7 left-0 whitespace-nowrap rounded-sm bg-[var(--ic-accent)] px-2 py-0.5 font-mono-geist text-[10px] font-semibold uppercase tracking-[var(--ic-tracking-hint)] text-white"
+            className="absolute -top-7 left-0 whitespace-nowrap rounded-sm bg-[var(--ic-accent)] px-2 py-0.5 text-[12px] font-semibold text-white"
           >
             {label}
           </span>
@@ -1885,7 +1885,7 @@ function CropAspectRail({
     <div className="flex flex-col gap-4">
       {groups.map((group) => (
         <div key={group.id} className="flex flex-col gap-1">
-          <div className="px-2.5 pb-1 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[var(--ic-ink-4)]">
+          <div className="px-2.5 pb-1 text-[13px] font-semibold text-[var(--ic-ink-4)]">
             {group.label}
           </div>
           {group.items.map((p) => {
@@ -1996,7 +1996,7 @@ function CropRail({
       <div
         role="radiogroup"
         aria-label="Fill mode"
-        className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
+        className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 text-[12px] font-medium"
       >
         {(['fit', 'crop'] as const).map((m) => (
           <button
@@ -2018,12 +2018,12 @@ function CropRail({
 
       {isFit ? (
         <>
-          <RailHeader>Bleed</RailHeader>
+          <RailHeader>Backdrop</RailHeader>
           <div className="flex items-center gap-2">
             <div
               role="radiogroup"
               aria-label="Backdrop"
-              className="inline-flex flex-1 items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
+              className="inline-flex flex-1 items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 text-[12px] font-medium"
             >
               {(['blur', 'solid'] as const).map((t) => (
                 <button
@@ -2096,7 +2096,7 @@ function CropRail({
             <button
               type="button"
               onClick={onResetOffset}
-              className="self-start font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
+              className="self-start text-[12px] text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
             >
               recenter crop
             </button>
@@ -2328,7 +2328,7 @@ function AudioRail({
 
       <div className="mt-auto">
         <RailFooterNote>
-          {engine.kind === 'loading' ? 'Loading engine…' : '100% in your browser'}
+          {engine.kind === 'loading' ? 'Loading engine…' : 'Runs in your browser.'}
         </RailFooterNote>
       </div>
     </>

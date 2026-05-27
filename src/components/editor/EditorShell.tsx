@@ -111,8 +111,8 @@ export function EditorShell({
                   className="block h-1 w-10 rounded-full bg-[var(--ic-ink-4)]"
                   style={{ opacity: 0.4 }}
                 />
-                <span className="font-mono-geist text-[11px] uppercase tracking-[0.14em] text-[var(--ic-ink-3)]">
-                  Editor settings
+                <span className="text-[13px] font-semibold text-[var(--ic-ink)]">
+                  Settings
                 </span>
               </div>
               <button
@@ -256,18 +256,17 @@ function Tool({
 
 export function RailHeader({ children }: { children: ReactNode }) {
   return (
-    <div className="px-0.5 py-1 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[var(--ic-tracking-eyebrow)] text-[var(--ic-ink-4)]">
+    <div className="px-0.5 pb-0.5 text-[13px] font-semibold text-[var(--ic-ink)]">
       {children}
     </div>
   )
 }
 
-// Centered caption beneath a CTA — "in your browser", "Native resolution", etc.
-// Decorative reassurance text, not interactive. Locks the uppercase footnote
-// pattern that every rail had hand-rolled.
+// Centered caption beneath a CTA — reassurance text like "Runs in your browser".
+// Reads as plain prose, not as a developer-tool eyebrow.
 export function RailFooterNote({ children }: { children: ReactNode }) {
   return (
-    <p className="text-center font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)]">
+    <p className="text-center text-[12px] leading-relaxed text-[var(--ic-ink-3)]">
       {children}
     </p>
   )

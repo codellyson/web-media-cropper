@@ -178,7 +178,7 @@ export function CompressView({ image, objectUrl, onClear, onSwitchTool }: Compre
                   role="radio"
                   aria-checked={format === f.value}
                   onClick={() => setFormat(f.value)}
-                  className={`h-8 rounded-md border font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)] transition ${
+                  className={`h-8 rounded-md border text-[12px] font-medium transition ${
                     format === f.value
                       ? 'border-[var(--ic-ink)] bg-[var(--ic-ink)] text-[var(--ic-bg)]'
                       : 'border-[var(--ic-line)] bg-[var(--ic-card)] text-[var(--ic-ink-2)] hover:border-[var(--ic-ink-4)] hover:text-[var(--ic-ink)]'
@@ -221,7 +221,7 @@ export function CompressView({ image, objectUrl, onClear, onSwitchTool }: Compre
             <RailExportButton onClick={handleDownload} disabled={!output || running}>
               Download <span aria-hidden></span>
             </RailExportButton>
-            <RailFooterNote>EXIF stripped · in your browser</RailFooterNote>
+            <RailFooterNote>EXIF stripped. Runs in your browser.</RailFooterNote>
           </div>
         </>
       }
@@ -296,7 +296,7 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
     <div
       role="radiogroup"
       aria-label="Compression mode"
-      className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
+      className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 text-[12px] font-medium"
     >
       {(['quality', 'target'] as const).map((m) => (
         <button

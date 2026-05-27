@@ -55,7 +55,7 @@ export function PresetPicker({ value, onSelect }: PresetPickerProps) {
     <div className="space-y-3">
       {Object.entries(groups).map(([platform, presets]) => (
         <section key={platform} className="space-y-1">
-          <div className="px-2.5 py-1 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--ic-ink-4)]">
+          <div className="px-0.5 pb-0.5 text-[13px] font-semibold text-[var(--ic-ink)]">
             {platform}
           </div>
           {presets.map((preset) => {

@@ -96,7 +96,7 @@ export function RailRight({
       <div
         role="radiogroup"
         aria-label="Fill mode"
-        className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
+        className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 text-[12px] font-medium"
       >
         {(['fit', 'crop'] as const).map((m) => (
           <button
@@ -118,7 +118,7 @@ export function RailRight({
 
       {isFit ? (
         <>
-          <RailHeader>Bleed</RailHeader>
+          <RailHeader>Backdrop</RailHeader>
           <BackdropPicker
             type={backdropType}
             onTypeChange={onBackdropTypeChange}
@@ -138,7 +138,7 @@ export function RailRight({
         </>
       ) : (
         <>
-          <RailHeader>Reframe</RailHeader>
+          <RailHeader>Subject</RailHeader>
           <RailSlider
             label="Subject lock"
             value={subjectLock}
@@ -167,7 +167,7 @@ export function RailRight({
         <div
           role="radiogroup"
           aria-label="Output format"
-          className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
+          className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 text-[12px] font-medium"
         >
           {FORMATS.map((f) => (
             <button
@@ -227,8 +227,8 @@ export function RailRight({
         </RailExportButton>
         <RailFooterNote>
           {format === 'jpeg' && preserveExif && exifSupported
-            ? 'EXIF preserved · in your browser'
-            : 'EXIF stripped · in your browser'}
+            ? 'EXIF preserved. Runs in your browser.'
+            : 'EXIF stripped. Runs in your browser.'}
         </RailFooterNote>
       </div>
     </>
@@ -257,7 +257,7 @@ function BackdropPicker({
       <div
         role="radiogroup"
         aria-label="Backdrop"
-        className="inline-flex flex-1 items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
+        className="inline-flex flex-1 items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 text-[12px] font-medium"
       >
         {(['blur', 'solid'] as const).map((t) => (
           <button
@@ -320,7 +320,7 @@ function Switch({
       <span className="flex items-center gap-1.5 font-medium text-[var(--ic-ink-2)]">
         {label}
         {hint && (
-          <span className="font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)]">
+          <span className="text-[11px] text-[var(--ic-ink-4)]">
             {hint}
           </span>
         )}
