@@ -38,7 +38,7 @@ function canUseMT(): boolean {
 // Pipes ffmpeg's stderr to the browser console so we can see what it's actually
 // doing during a hang. Dev-only — no-op in prod builds.
 function attachDevLogTap(ff: FFmpeg): void {
-  if (!import.meta.env.DEV) return
+  if (process.env.NODE_ENV !== 'development') return
   ff.on('log', ({ type, message }: { type: string; message: string }) => {
     console.log(`[ffmpeg:${type}] ${message}`)
   })

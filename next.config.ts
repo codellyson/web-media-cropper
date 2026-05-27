@@ -11,10 +11,19 @@ const ISOLATION_HEADERS = [
   { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' },
 ]
 
+// Generic security/policy headers — moved here from vercel.json so the config
+// lives next to the framework that owns it. Applied to every route.
+const BASE_HEADERS = [
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  { key: 'Permissions-Policy', value: 'interest-cohort=()' },
+]
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   async headers() {
     return [
+      { source: '/:path*', headers: BASE_HEADERS },
       { source: '/studio', headers: ISOLATION_HEADERS },
       { source: '/studio/:path*', headers: ISOLATION_HEADERS },
       { source: '/batch', headers: ISOLATION_HEADERS },
