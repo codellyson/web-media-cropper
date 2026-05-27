@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { EditorShell, RailSlider } from '@/components/editor/EditorShell'
+import {
+  EditorShell,
+  RailExportButton,
+  RailFooterNote,
+  RailHeader,
+  RailSlider,
+  StatLine,
+} from '@/components/editor/EditorShell'
 import { VideoTimeline } from '@/components/editor/VideoTimeline'
 import { formatDuration, type LoadedVideo } from '@/lib/loadVideo'
 import { formatBytes } from '@/lib/crop'
@@ -533,8 +540,6 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
   // Mobile bottom-bar primary action — varies by tool. Audio mode has multiple
   // actions (extract / mute / replace) so we leave it empty there; the user
   // opens the Settings sheet to pick.
-  const mobileActionClass =
-    'inline-flex h-10 items-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40'
   let mobileAction: React.ReactNode = null
   if (mode === 'trim') {
     const span = trimOut - trimIn
@@ -552,43 +557,43 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
         ? 'Export GIF'
         : 'Export trim'
     mobileAction = (
-      <button type="button" onClick={exportTrimOrGif} disabled={disabled} className={mobileActionClass}>
+      <RailExportButton align="start" onClick={exportTrimOrGif} disabled={disabled}>
         {label}
-      </button>
+      </RailExportButton>
     )
   } else if (mode === 'crop') {
     const cropTrimmed = trimIn > 0 || trimOut < video.durationMs - 1
     const disabled = anyBusy || engine.kind === 'loading'
     const baseLabel = cropFillMode === 'fit' ? 'Export fit' : 'Export crop'
     mobileAction = (
-      <button type="button" onClick={exportCrop} disabled={disabled} className={mobileActionClass}>
+      <RailExportButton align="start" onClick={exportCrop} disabled={disabled}>
         {cropping
           ? 'Encoding…'
           : cropTrimmed
             ? `${baseLabel} · ${formatDuration(trimOut - trimIn)}`
             : baseLabel}
-      </button>
+      </RailExportButton>
     )
   } else if (mode === 'compress') {
     const compressTrimmed = trimIn > 0 || trimOut < video.durationMs - 1
     const disabled = anyBusy || engine.kind === 'loading' || !targetBytes
     mobileAction = (
-      <button type="button" onClick={exportCompress} disabled={disabled} className={mobileActionClass}>
+      <RailExportButton align="start" onClick={exportCompress} disabled={disabled}>
         {compressing
           ? 'Compressing…'
           : compressTrimmed
             ? `Compress · ${formatDuration(trimOut - trimIn)}`
             : 'Compress'}
-      </button>
+      </RailExportButton>
     )
   } else if (mode === 'frame' && captures.length > 0) {
     // Hidden when no captures — better than a "Export  frames" placeholder.
     // Once the user captures a first frame, the button appears with the count.
     const disabled = anyBusy || engine.kind === 'loading'
     mobileAction = (
-      <button type="button" onClick={exportAll} disabled={disabled} className={mobileActionClass}>
+      <RailExportButton align="start" onClick={exportAll} disabled={disabled}>
         Export {captures.length} {captures.length === 1 ? 'frame' : 'frames'}
-      </button>
+      </RailExportButton>
     )
   }
 
@@ -631,10 +636,10 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
           <div className="flex flex-col gap-3">
             <RailHeader>Source</RailHeader>
             <div className="flex flex-col gap-1.5 rounded-lg border border-[var(--ic-line)] bg-[var(--ic-card)] p-2.5">
-              <Stat label="Dimensions" value={`${video.width}×${video.height}`} />
-              <Stat label="Duration" value={formatDuration(video.durationMs)} />
-              <Stat label="Size" value={formatBytes(video.sizeBytes)} />
-              <Stat label="Container" value={video.mime.replace(/^video\//, '') || 'unknown'} />
+              <StatLine label="Dimensions" value={`${video.width}×${video.height}`} />
+              <StatLine label="Duration" value={formatDuration(video.durationMs)} />
+              <StatLine label="Size" value={formatBytes(video.sizeBytes)} />
+              <StatLine label="Container" value={video.mime.replace(/^video\//, '') || 'unknown'} />
             </div>
           </div>
 
@@ -802,7 +807,7 @@ export function VideoView({ video, objectUrl, onClear }: VideoViewProps) {
             <button
               type="button"
               onClick={capture}
-              className="inline-flex items-center gap-2 rounded-md border border-[var(--ic-accent)] bg-[var(--ic-accent-tint)] px-2.5 py-1 font-mono-geist text-[11px] font-semibold uppercase tracking-wider text-[var(--ic-accent)] hover:brightness-110"
+              className="inline-flex items-center gap-2 rounded-md border border-[var(--ic-accent)] bg-[var(--ic-accent-tint)] px-2.5 py-1 font-mono-geist text-[11px] font-semibold uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-accent)] hover:brightness-110"
             >
               <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--ic-accent)' }} />
               Capture frame
@@ -894,7 +899,7 @@ function FrameBulkPanel({
           ? `Capturing ${done}/${total}…`
           : `Capture every ${intervalLabel}`}
         {!capturing && (
-          <span className="font-mono-geist text-[10.5px] uppercase tracking-wider text-[var(--ic-ink-4)]">
+          <span className="font-mono-geist text-[10.5px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)]">
             ~{expected}
           </span>
         )}
@@ -923,8 +928,8 @@ function TrimSelectionPanel({
     <div className="flex flex-col gap-3 border-t border-[var(--ic-line)] pt-3">
       <RailHeader>Selection</RailHeader>
       <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] p-3">
-        <Stat label="In" value={formatTimeMs(inMs)} />
-        <Stat label="Out" value={formatTimeMs(outMs)} />
+        <StatLine label="In" value={formatTimeMs(inMs)} />
+        <StatLine label="Out" value={formatTimeMs(outMs)} />
         <div className="mt-1 flex items-baseline justify-between border-t border-[var(--ic-line)] pt-2">
           <span className="text-[12px] text-[var(--ic-ink-3)]">Duration</span>
           <span className="font-mono-geist text-[14px] font-semibold text-[var(--ic-accent)]">
@@ -937,14 +942,14 @@ function TrimSelectionPanel({
         <button
           type="button"
           onClick={onSetIn}
-          className="rounded-md border border-[var(--ic-line)] bg-[var(--ic-card)] px-2 py-1.5 font-mono-geist text-[11px] uppercase tracking-wider text-[var(--ic-ink-2)] hover:bg-[var(--ic-bg-3)]"
+          className="rounded-md border border-[var(--ic-line)] bg-[var(--ic-card)] px-2 py-1.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-2)] hover:bg-[var(--ic-bg-3)]"
         >
           Set IN [{`{`}
         </button>
         <button
           type="button"
           onClick={onSetOut}
-          className="rounded-md border border-[var(--ic-line)] bg-[var(--ic-card)] px-2 py-1.5 font-mono-geist text-[11px] uppercase tracking-wider text-[var(--ic-ink-2)] hover:bg-[var(--ic-bg-3)]"
+          className="rounded-md border border-[var(--ic-line)] bg-[var(--ic-card)] px-2 py-1.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-2)] hover:bg-[var(--ic-bg-3)]"
         >
           Set OUT {`}`}]
         </button>
@@ -952,7 +957,7 @@ function TrimSelectionPanel({
       <button
         type="button"
         onClick={onReset}
-        className="self-start font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
+        className="self-start font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
       >
         reset to full clip
       </button>
@@ -1023,7 +1028,7 @@ function TrimRail({
       <div
         role="radiogroup"
         aria-label="Output format"
-        className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+        className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
       >
         {(['mp4', 'gif'] as const).map((f) => (
           <button
@@ -1066,7 +1071,7 @@ function TrimRail({
           <div
             role="radiogroup"
             aria-label="Frame rate"
-            className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+            className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
           >
             {FPS_OPTIONS.map((f) => (
               <button
@@ -1090,7 +1095,7 @@ function TrimRail({
           <div
             role="radiogroup"
             aria-label="Width"
-            className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[10.5px] uppercase tracking-[0.12em]"
+            className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[10.5px] uppercase tracking-[var(--ic-tracking-radio)]"
           >
             {WIDTH_OPTIONS.map((w) => (
               <button
@@ -1121,8 +1126,7 @@ function TrimRail({
       </p>
 
       <div className="mt-auto flex flex-col gap-2">
-        <button
-          type="button"
+        <RailExportButton
           onClick={onExport}
           // GIF export is meaningful at any length (re-encodes via palette);
           // MP4 trim with the full range is a no-op so we still block it.
@@ -1133,13 +1137,10 @@ function TrimRail({
             outMs - inMs < 100 ||
             (format === 'mp4' && outMs - inMs >= durationMs)
           }
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {exportLabel}
-        </button>
-        <p className="text-center font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)]">
-          {footerNote}
-        </p>
+        </RailExportButton>
+        <RailFooterNote>{footerNote}</RailFooterNote>
       </div>
     </>
   )
@@ -1174,7 +1175,7 @@ function FrameGalleryRail({
           <button
             type="button"
             onClick={onClear}
-            className="font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
+            className="font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
           >
             clear
           </button>
@@ -1183,7 +1184,7 @@ function FrameGalleryRail({
 
       {captures.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--ic-line)] p-4 text-center">
-          <span className="font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)]">
+          <span className="font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)]">
             no frames yet
           </span>
           <p className="text-[11px] leading-relaxed text-[var(--ic-ink-3)]">
@@ -1222,7 +1223,7 @@ function FrameGalleryRail({
                   type="button"
                   onClick={() => onExport(c)}
                   disabled={c.exporting}
-                  className="self-start font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-accent)] hover:brightness-110 disabled:opacity-50"
+                  className="self-start font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-accent)] hover:brightness-110 disabled:opacity-50"
                 >
                   {c.exporting ? 'exporting…' : 'export PNG'}
                 </button>
@@ -1241,22 +1242,18 @@ function FrameGalleryRail({
       )}
 
       <div className="mt-auto flex flex-col gap-2">
-        <button
-          type="button"
+        <RailExportButton
           onClick={onExportAll}
           disabled={busy || captures.length === 0 || anyExporting || engine.kind === 'loading'}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {engine.kind === 'loading'
             ? 'Loading engine…'
             : anyExporting
               ? 'Exporting…'
               : `Export all ${captures.length || ''}`.trim()}{' '}
-          
-        </button>
-        <p className="text-center font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)]">
-          Native resolution · in your browser
-        </p>
+
+        </RailExportButton>
+        <RailFooterNote>Native resolution · in your browser</RailFooterNote>
       </div>
     </>
   )
@@ -1487,9 +1484,7 @@ function ProgressOverlay({ label, pct }: { label: string; pct: number }) {
             }}
           />
         </div>
-        <p className="text-center font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)]">
-          100% in your browser
-        </p>
+        <RailFooterNote>100% in your browser</RailFooterNote>
       </div>
     </div>
   )
@@ -1526,13 +1521,6 @@ function EngineOverlay({
   )
 }
 
-function RailHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="px-0.5 py-1 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--ic-ink-4)]">
-      {children}
-    </div>
-  )
-}
 
 /**
  * Paints the foreground <video> element into a canvas with cover-fit math, then
@@ -1663,14 +1651,6 @@ function FitBackdrop({
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between">
-      <span className="text-[12px] text-[var(--ic-ink-3)]">{label}</span>
-      <span className="font-mono-geist text-[12px] font-semibold text-[var(--ic-ink)]">{value}</span>
-    </div>
-  )
-}
 
 /**
  * "Selection" row in the crop rail's output card. Shows the current trim range
@@ -1704,7 +1684,7 @@ function SelectionStat({
             type="button"
             onClick={onReset}
             aria-label="Reset trim"
-            className="font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
+            className="font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
           >
             reset
           </button>
@@ -1864,7 +1844,7 @@ function CropOverlay({
         })}
         {label && (
           <span
-            className="absolute -top-7 left-0 whitespace-nowrap rounded-sm bg-[var(--ic-accent)] px-2 py-0.5 font-mono-geist text-[10px] font-semibold uppercase tracking-wider text-white"
+            className="absolute -top-7 left-0 whitespace-nowrap rounded-sm bg-[var(--ic-accent)] px-2 py-0.5 font-mono-geist text-[10px] font-semibold uppercase tracking-[var(--ic-tracking-hint)] text-white"
           >
             {label}
           </span>
@@ -2016,7 +1996,7 @@ function CropRail({
       <div
         role="radiogroup"
         aria-label="Fill mode"
-        className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+        className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
       >
         {(['fit', 'crop'] as const).map((m) => (
           <button
@@ -2043,7 +2023,7 @@ function CropRail({
             <div
               role="radiogroup"
               aria-label="Backdrop"
-              className="inline-flex flex-1 items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+              className="inline-flex flex-1 items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
             >
               {(['blur', 'solid'] as const).map((t) => (
                 <button
@@ -2089,7 +2069,7 @@ function CropRail({
             />
           )}
           <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] p-3">
-            <Stat label="Output" value={`${active.width}×${active.height}`} />
+            <StatLine label="Output" value={`${active.width}×${active.height}`} />
             <SelectionStat
               isTrimmed={isTrimmed}
               selectedMs={selectedMs}
@@ -2102,9 +2082,9 @@ function CropRail({
         <>
           <RailHeader>Crop region</RailHeader>
           <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] p-3">
-            <Stat label="Output" value={`${output.width}×${output.height}`} />
-            <Stat label="Source crop" value={`${box.w}×${box.h}`} />
-            <Stat label="Offset" value={`${box.x},${box.y}`} />
+            <StatLine label="Output" value={`${output.width}×${output.height}`} />
+            <StatLine label="Source crop" value={`${box.w}×${box.h}`} />
+            <StatLine label="Offset" value={`${box.x},${box.y}`} />
             <SelectionStat
               isTrimmed={isTrimmed}
               selectedMs={selectedMs}
@@ -2116,7 +2096,7 @@ function CropRail({
             <button
               type="button"
               onClick={onResetOffset}
-              className="self-start font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
+              className="self-start font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)] hover:text-[var(--ic-ink-2)]"
             >
               recenter crop
             </button>
@@ -2128,12 +2108,7 @@ function CropRail({
       )}
 
       <div className="mt-auto flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={onExport}
-          disabled={busy || engine.kind === 'loading'}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-        >
+        <RailExportButton onClick={onExport} disabled={busy || engine.kind === 'loading'}>
           {cropping
             ? 'Encoding…'
             : engine.kind === 'loading'
@@ -2141,10 +2116,8 @@ function CropRail({
               : isFit
                 ? 'Export fit'
                 : 'Export crop'}
-        </button>
-        <p className="text-center font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)]">
-          100% in your browser
-        </p>
+        </RailExportButton>
+        <RailFooterNote>100% in your browser</RailFooterNote>
       </div>
     </>
   )
@@ -2186,12 +2159,12 @@ function CompressResultPanel({
     <div className="flex flex-col gap-3 border-t border-[var(--ic-line)] pt-3">
       <RailHeader>Result</RailHeader>
       <div className="flex flex-col gap-1.5 rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] p-3">
-        <Stat label="Original" value={formatBytes(sourceBytes)} />
-        <Stat
+        <StatLine label="Original" value={formatBytes(sourceBytes)} />
+        <StatLine
           label="Target"
           value={targetBytes != null ? formatBytes(targetBytes) : '—'}
         />
-        <Stat
+        <StatLine
           label="Output"
           value={
             outputBytes != null
@@ -2264,21 +2237,17 @@ function CompressRail({
       </p>
 
       <div className="mt-auto flex flex-col gap-2">
-        <button
-          type="button"
+        <RailExportButton
           onClick={onExport}
           disabled={busy || engine.kind === 'loading' || !targetBytes}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {compressing
             ? 'Compressing…'
             : engine.kind === 'loading'
               ? 'Loading engine…'
               : 'Compress '}
-        </button>
-        <p className="text-center font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)]">
-          100% in your browser
-        </p>
+        </RailExportButton>
+        <RailFooterNote>100% in your browser</RailFooterNote>
       </div>
     </>
   )
@@ -2358,9 +2327,9 @@ function AudioRail({
       </div>
 
       <div className="mt-auto">
-        <p className="text-center font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)]">
+        <RailFooterNote>
           {engine.kind === 'loading' ? 'Loading engine…' : '100% in your browser'}
-        </p>
+        </RailFooterNote>
       </div>
     </>
   )

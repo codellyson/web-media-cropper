@@ -256,8 +256,76 @@ function Tool({
 
 export function RailHeader({ children }: { children: ReactNode }) {
   return (
-    <div className="px-2.5 py-1 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--ic-ink-4)]">
+    <div className="px-0.5 py-1 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[var(--ic-tracking-eyebrow)] text-[var(--ic-ink-4)]">
       {children}
+    </div>
+  )
+}
+
+// Centered caption beneath a CTA — "in your browser", "Native resolution", etc.
+// Decorative reassurance text, not interactive. Locks the uppercase footnote
+// pattern that every rail had hand-rolled.
+export function RailFooterNote({ children }: { children: ReactNode }) {
+  return (
+    <p className="text-center font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-[var(--ic-ink-4)]">
+      {children}
+    </p>
+  )
+}
+
+// Primary action in a rail (or mobile bar). `align="center"` for rail-footer
+// buttons that read as "the export" of a section; `align="start"` for the
+// mobile bottom bar where the button often carries a trailing chip
+// (e.g. "Download · 1080×1920") that should hang at the end.
+export function RailExportButton({
+  onClick,
+  disabled,
+  align = 'center',
+  children,
+  ...rest
+}: {
+  onClick?: () => void
+  disabled?: boolean
+  align?: 'center' | 'start'
+  children: ReactNode
+} & Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'disabled' | 'children'>) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex h-10 items-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 ${
+        align === 'center' ? 'justify-center' : ''
+      }`}
+      {...rest}
+    >
+      {children}
+    </button>
+  )
+}
+
+// Label/value pair used in stat cards (source dims, export summary, compress
+// result). `accent` swaps the value color to the brand accent for the "the
+// number that matters most" row in a card.
+export function StatLine({
+  label,
+  value,
+  accent,
+}: {
+  label: string
+  value: ReactNode
+  accent?: boolean
+}) {
+  return (
+    <div className="flex items-baseline justify-between">
+      <span className="text-[12px] text-[var(--ic-ink-3)]">{label}</span>
+      <span
+        className={`font-mono-geist text-[13px] font-semibold ${
+          accent ? 'text-[var(--ic-accent)]' : 'text-[var(--ic-ink)]'
+        }`}
+      >
+        {value}
+      </span>
     </div>
   )
 }

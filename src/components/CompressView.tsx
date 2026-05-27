@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { EditorShell, RailSlider } from '@/components/editor/EditorShell'
+import {
+  EditorShell,
+  RailExportButton,
+  RailFooterNote,
+  RailHeader,
+  RailSlider,
+  StatLine,
+} from '@/components/editor/EditorShell'
 import { avifEncodeSupported, formatBytes } from '@/lib/crop'
 import {
   compressAtQuality,
@@ -171,7 +178,7 @@ export function CompressView({ image, objectUrl, onClear, onSwitchTool }: Compre
                   role="radio"
                   aria-checked={format === f.value}
                   onClick={() => setFormat(f.value)}
-                  className={`h-8 rounded-md border font-mono-geist text-[11px] uppercase tracking-[0.12em] transition ${
+                  className={`h-8 rounded-md border font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)] transition ${
                     format === f.value
                       ? 'border-[var(--ic-ink)] bg-[var(--ic-ink)] text-[var(--ic-bg)]'
                       : 'border-[var(--ic-line)] bg-[var(--ic-card)] text-[var(--ic-ink-2)] hover:border-[var(--ic-ink-4)] hover:text-[var(--ic-ink)]'
@@ -188,8 +195,8 @@ export function CompressView({ image, objectUrl, onClear, onSwitchTool }: Compre
         <>
           <RailHeader>Result</RailHeader>
           <div className="flex flex-col gap-2 rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] p-3">
-            <Stat label="Original" value={formatBytes(sourceBytes)} />
-            <Stat
+            <StatLine label="Original" value={formatBytes(sourceBytes)} />
+            <StatLine
               label="Compressed"
               value={
                 outBytes != null
@@ -211,34 +218,22 @@ export function CompressView({ image, objectUrl, onClear, onSwitchTool }: Compre
           </div>
 
           <div className="mt-auto flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={handleDownload}
-              disabled={!output || running}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-            >
+            <RailExportButton onClick={handleDownload} disabled={!output || running}>
               Download <span aria-hidden></span>
-            </button>
-            <p className="text-center font-mono-geist text-[10px] uppercase tracking-wider text-[var(--ic-ink-4)]">
-              EXIF stripped · in your browser
-            </p>
+            </RailExportButton>
+            <RailFooterNote>EXIF stripped · in your browser</RailFooterNote>
           </div>
         </>
       }
       mobileAction={
-        <button
-          type="button"
-          onClick={handleDownload}
-          disabled={!output || running}
-          className="inline-flex h-10 items-center gap-2 rounded-full bg-[var(--ic-ink)] px-4 text-[13px] font-medium text-[var(--ic-bg)] transition enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-        >
+        <RailExportButton align="start" onClick={handleDownload} disabled={!output || running}>
           Download
           {outBytes != null && (
-            <span className="font-mono-geist text-[10.5px] uppercase tracking-wider opacity-60">
+            <span className="font-mono-geist text-[10.5px] uppercase tracking-[var(--ic-tracking-hint)] opacity-60">
               {formatBytes(outBytes)}
             </span>
           )}
-        </button>
+        </RailExportButton>
       }
     >
       <CanvasView image={image} objectUrl={objectUrl} running={running} />
@@ -283,7 +278,7 @@ function CanvasView({
           />
           {running && (
             <div
-              className="absolute inset-0 flex items-center justify-center rounded-md bg-black/40 font-mono-geist text-[11px] uppercase tracking-wider text-white"
+              className="absolute inset-0 flex items-center justify-center rounded-md bg-black/40 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-hint)] text-white"
               role="status"
               aria-live="polite"
             >
@@ -301,7 +296,7 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
     <div
       role="radiogroup"
       aria-label="Compression mode"
-      className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+      className="inline-flex w-full items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
     >
       {(['quality', 'target'] as const).map((m) => (
         <button
@@ -319,29 +314,6 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
           {m === 'quality' ? 'Quality' : 'Target'}
         </button>
       ))}
-    </div>
-  )
-}
-
-function RailHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="px-0.5 pt-1 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--ic-ink-4)]">
-      {children}
-    </div>
-  )
-}
-
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="flex items-baseline justify-between">
-      <span className="text-[12px] text-[var(--ic-ink-3)]">{label}</span>
-      <span
-        className={`font-mono-geist text-[13px] font-semibold ${
-          accent ? 'text-[var(--ic-accent)]' : 'text-[var(--ic-ink)]'
-        }`}
-      >
-        {value}
-      </span>
     </div>
   )
 }

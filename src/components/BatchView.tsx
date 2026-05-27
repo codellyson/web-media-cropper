@@ -407,7 +407,7 @@ export function BatchView() {
             <button
               type="button"
               onClick={clearFiles}
-              className="font-mono-geist text-[11px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)] transition hover:text-[var(--ic-ink-2)]"
+              className="font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)] text-[var(--ic-ink-4)] transition hover:text-[var(--ic-ink-2)]"
             >
               clear all
             </button>
@@ -520,7 +520,7 @@ export function BatchView() {
                   <span className="min-w-0 flex-1 truncate text-[var(--ic-ink-2)]">
                     {f.name}
                     {overCap && (
-                      <span className="ml-2 font-mono-geist text-[10px] uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                      <span className="ml-2 font-mono-geist text-[10px] uppercase tracking-[var(--ic-tracking-hint)] text-amber-600 dark:text-amber-400">
                         over 60s · will skip
                       </span>
                     )}
@@ -555,7 +555,7 @@ export function BatchView() {
             <button
               type="button"
               onClick={() => setSelected(new Set(PRESETS.map((p) => p.id)))}
-              className="font-mono-geist text-[11px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)] transition hover:text-[var(--ic-ink-2)]"
+              className="font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)] text-[var(--ic-ink-4)] transition hover:text-[var(--ic-ink-2)]"
             >
               all
             </button>
@@ -565,7 +565,7 @@ export function BatchView() {
             <button
               type="button"
               onClick={() => setSelected(new Set())}
-              className="font-mono-geist text-[11px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)] transition hover:text-[var(--ic-ink-2)]"
+              className="font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)] text-[var(--ic-ink-4)] transition hover:text-[var(--ic-ink-2)]"
             >
               none
             </button>
@@ -708,7 +708,7 @@ export function BatchView() {
             <div
               role="radiogroup"
               aria-label="Fill mode"
-              className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+              className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
             >
               {(['fit', 'crop'] as const).map((m) => (
                 <button
@@ -735,7 +735,7 @@ export function BatchView() {
               <div
                 role="radiogroup"
                 aria-label="Backdrop"
-                className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+                className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
               >
                 {(['blur', 'solid'] as const).map((t) => (
                   <button
@@ -784,7 +784,7 @@ export function BatchView() {
                 className="w-40 accent-[var(--ic-ink)]"
                 aria-label="Bleed blur amount"
               />
-              <span className="font-mono-geist text-[11px] tracking-[0.12em] text-[var(--ic-ink-3)]">
+              <span className="font-mono-geist text-[11px] tracking-[var(--ic-tracking-radio)] text-[var(--ic-ink-3)]">
                 {blurPx <= 12 ? 'soft' : blurPx <= 28 ? 'medium' : 'strong'}
               </span>
             </SettingRow>
@@ -795,7 +795,7 @@ export function BatchView() {
             <div
               role="radiogroup"
               aria-label="Output format"
-              className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[0.12em]"
+              className="inline-flex items-center rounded-full border border-[var(--ic-line)] bg-[var(--ic-card)] p-0.5 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)]"
             >
               {FORMATS.map((f) => (
                 <button
@@ -828,7 +828,7 @@ export function BatchView() {
                 className="w-40 accent-[var(--ic-ink)]"
                 aria-label="Output quality percentage"
               />
-              <span className="font-mono-geist text-[11px] tracking-[0.12em] text-[var(--ic-ink-3)]">
+              <span className="font-mono-geist text-[11px] tracking-[var(--ic-tracking-radio)] text-[var(--ic-ink-3)]">
                 {Math.round(quality * 100)}%
               </span>
             </SettingRow>
@@ -859,7 +859,7 @@ export function BatchView() {
         >
           {running ? 'Cropping…' : 'Run batch'}
           {!running && totalOps > 0 && (
-            <span className="font-mono-geist text-[10.5px] uppercase tracking-wider opacity-60">
+            <span className="font-mono-geist text-[10.5px] uppercase tracking-[var(--ic-tracking-hint)] opacity-60">
               {totalOps} crop{totalOps === 1 ? '' : 's'}
             </span>
           )}
@@ -869,7 +869,7 @@ export function BatchView() {
 
       {progress && progress.total > 0 && (
         <div className="mt-4 rounded-xl border border-[var(--ic-line)] bg-[var(--ic-card)] p-4">
-          <div className="mb-2 flex items-center justify-between font-mono-geist text-[11px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)]">
+          <div className="mb-2 flex items-center justify-between font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)] text-[var(--ic-ink-4)]">
             <span>
               {running
                 ? 'Running'
@@ -909,7 +909,7 @@ function SettingRow({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <span className="w-[88px] shrink-0 font-mono-geist text-[11px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)]">
+      <span className="w-[88px] shrink-0 font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)] text-[var(--ic-ink-4)]">
         {label}
       </span>
       <div className="flex flex-wrap items-center gap-3">{children}</div>
@@ -941,7 +941,7 @@ function Section({
             {title}
           </h2>
           {meta && (
-            <span className="font-mono-geist text-[11px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)]">
+            <span className="font-mono-geist text-[11px] uppercase tracking-[var(--ic-tracking-radio)] text-[var(--ic-ink-4)]">
               · {meta}
             </span>
           )}
