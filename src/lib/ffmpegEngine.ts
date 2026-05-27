@@ -5,16 +5,18 @@ import { toBlobURL } from '@ffmpeg/util'
 // pthreads via SharedArrayBuffer) is 3–5× faster on x264 encodes but requires
 // the page to be cross-origin-isolated (COOP: same-origin + COEP: require-corp).
 //
-// In dev, MT files are served same-origin from node_modules by vite's
-// `mt-core-serve` plugin. In prod they live on the asset CDN (R2 behind
+// In dev, MT files are served same-origin from node_modules by the Next.js
+// route handler at app/ffmpeg-mt/[file]/route.ts (Vite served them via a
+// custom plugin pre-migration). In prod they live on the asset CDN (R2 behind
 // assets.kreativekorna.com) — bundling the ~31MB wasm into the deploy bloats
 // every cold deploy unnecessarily. ST wasm has always lived on the CDN for
 // the same reason. Both paths require the CDN to send
 // `Cross-Origin-Resource-Policy: cross-origin` + `Access-Control-Allow-Origin: *`
 // on /ffmpeg* — without those, COEP enforcement on /studio/* blocks the fetch.
-const MT_BASE = import.meta.env.PROD
-  ? 'https://assets.kreativekorna.com/ffmpeg-mt'
-  : '/ffmpeg-mt'
+const MT_BASE =
+  process.env.NODE_ENV === 'production'
+    ? 'https://assets.kreativekorna.com/ffmpeg-mt'
+    : '/ffmpeg-mt'
 const ST_URLS = {
   core: '/ffmpeg/ffmpeg-core.js',
   wasm: 'https://assets.kreativekorna.com/ffmpeg/ffmpeg-core.wasm',
