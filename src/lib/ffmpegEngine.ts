@@ -1,12 +1,46 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg'
 import { toBlobURL } from '@ffmpeg/util'
 
-// The ffmpeg-wasm `.js` glue (~150 kB) ships with the build at /ffmpeg/.
-// The `.wasm` core (~30 MB) is too heavy for the Worker bundle, so it loads
-// from a static-asset CDN at runtime. The CDN response must include CORS
-// headers (e.g. Access-Control-Allow-Origin) so toBlobURL's fetch succeeds.
-const CORE_JS_URL = '/ffmpeg/ffmpeg-core.js'
-const CORE_WASM_URL = 'https://assets.kreativekorna.com/ffmpeg/ffmpeg-core.wasm'
+// ffmpeg-wasm has two cores. ST (single-thread) loads anywhere. MT (multi-thread,
+// pthreads via SharedArrayBuffer) is 3–5× faster on x264 encodes but requires
+// the page to be cross-origin-isolated (COOP: same-origin + COEP: require-corp).
+//
+// In dev, MT files are served same-origin from node_modules by vite's
+// `mt-core-serve` plugin. In prod they live on the asset CDN — the ESM build
+// (~31MB wasm) exceeds Cloudflare Pages' 25MB per-file cap, so same-origin
+// hosting isn't viable on the free tier. ST wasm has always lived on the CDN
+// for the same reason. Both paths require the CDN to send
+// `Cross-Origin-Resource-Policy: cross-origin` + `Access-Control-Allow-Origin: *`
+// on /ffmpeg* — without those, COEP enforcement on /studio/* blocks the fetch.
+const MT_BASE = import.meta.env.PROD
+  ? 'https://assets.kreativekorna.com/ffmpeg-mt'
+  : '/ffmpeg-mt'
+const ST_URLS = {
+  core: '/ffmpeg/ffmpeg-core.js',
+  wasm: 'https://assets.kreativekorna.com/ffmpeg/ffmpeg-core.wasm',
+} as const
+const MT_URLS = {
+  core: `${MT_BASE}/ffmpeg-core.js`,
+  wasm: `${MT_BASE}/ffmpeg-core.wasm`,
+  worker: `${MT_BASE}/ffmpeg-core.worker.js`,
+} as const
+
+function canUseMT(): boolean {
+  return (
+    typeof SharedArrayBuffer !== 'undefined' &&
+    typeof crossOriginIsolated !== 'undefined' &&
+    crossOriginIsolated === true
+  )
+}
+
+// Pipes ffmpeg's stderr to the browser console so we can see what it's actually
+// doing during a hang. Dev-only — no-op in prod builds.
+function attachDevLogTap(ff: FFmpeg): void {
+  if (!import.meta.env.DEV) return
+  ff.on('log', ({ type, message }: { type: string; message: string }) => {
+    console.log(`[ffmpeg:${type}] ${message}`)
+  })
+}
 
 let instance: FFmpeg | null = null
 let loadPromise: Promise<FFmpeg> | null = null
@@ -17,7 +51,7 @@ const listeners = new Set<Listener>()
 export type EngineStatus =
   | { kind: 'idle' }
   | { kind: 'loading'; progress: number }
-  | { kind: 'ready' }
+  | { kind: 'ready'; variant: 'mt' | 'st' }
   | { kind: 'error'; message: string }
 
 let status: EngineStatus = { kind: 'idle' }
@@ -42,15 +76,37 @@ export function getFFmpeg(): Promise<FFmpeg> {
 
   loadPromise = (async () => {
     setStatus({ kind: 'loading', progress: 0 })
-    const ff = new FFmpeg()
     try {
+      // MT is preferred when the page is isolated, but a CDN miss (404, CORP
+      // misconfig, transient network) shouldn't break the app — fall back to
+      // ST so the engine still loads, just slower. The badge surfaces which
+      // path actually won.
+      if (canUseMT()) {
+        try {
+          const ff = new FFmpeg()
+          const [coreURL, wasmURL, workerURL] = await Promise.all([
+            toBlobURL(MT_URLS.core, 'text/javascript'),
+            toBlobURL(MT_URLS.wasm, 'application/wasm'),
+            toBlobURL(MT_URLS.worker, 'text/javascript'),
+          ])
+          await ff.load({ coreURL, wasmURL, workerURL })
+          instance = ff
+          attachDevLogTap(ff)
+          setStatus({ kind: 'ready', variant: 'mt' })
+          return ff
+        } catch (mtErr) {
+          console.warn('[ffmpeg] MT core unavailable, falling back to ST:', mtErr)
+        }
+      }
+      const ff = new FFmpeg()
       const [coreURL, wasmURL] = await Promise.all([
-        toBlobURL(CORE_JS_URL, 'text/javascript'),
-        toBlobURL(CORE_WASM_URL, 'application/wasm'),
+        toBlobURL(ST_URLS.core, 'text/javascript'),
+        toBlobURL(ST_URLS.wasm, 'application/wasm'),
       ])
       await ff.load({ coreURL, wasmURL })
       instance = ff
-      setStatus({ kind: 'ready' })
+      attachDevLogTap(ff)
+      setStatus({ kind: 'ready', variant: 'st' })
       return ff
     } catch (err) {
       loadPromise = null
@@ -515,11 +571,18 @@ export async function cropEncodeVideo(
   const backdropType = options.backdropType ?? 'blur'
   const backdropColor = sanitizeFfmpegColor(options.backdropColor) ?? 'black'
 
+  // Cap source long edge at 1280 and convert to 8-bit BEFORE the split/blur/
+  // overlay pipeline runs. Tighter cap than the compress path (which is 1920)
+  // because the fit graph runs every filter twice (bg + fg) — more memory
+  // and CPU per frame, and the headroom on wasm's 32-bit 2GB cap is small.
+  const preFilter = `scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p`
+
   // Solid backdrop: a single `pad` filter wraps the contain-fit source with the
   // chosen color, then `vignette` darkens the corners so the bleed reads as
   // ambient light rather than flat paint. PI/5 is a moderate falloff angle.
   // Still no filter_complex, no blur — measurably faster than the blur path.
   const solidVf =
+    `${preFilter},` +
     `scale=${ow}:${oh}:force_original_aspect_ratio=decrease:force_divisible_by=2,` +
     `pad=${ow}:${oh}:(${ow}-iw)/2:(${oh}-ih)/2:color=${backdropColor},` +
     `vignette=angle=PI/5,format=yuv420p`
@@ -538,7 +601,7 @@ export async function cropEncodeVideo(
   const downscaleWidth = Math.max(120, Math.min(400, Math.round(480 - blurPx * 6)))
   const boxblurPasses = blurPx >= 32 ? 3 : 2
   const fitFilter =
-    `[0:v]split=2[bg][fg];` +
+    `[0:v]${preFilter},split=2[bg][fg];` +
     `[bg]scale=${ow}:${oh}:force_original_aspect_ratio=increase,crop=${ow}:${oh},` +
     `scale=${downscaleWidth}:-2,boxblur=2:${boxblurPasses},` +
     `scale=${ow}:${oh}:flags=bilinear,eq=brightness=-0.1[bgblur];` +
@@ -564,9 +627,17 @@ export async function cropEncodeVideo(
           '-c:v',
           'libx264',
           '-preset',
-          'veryfast',
+          'superfast',
           '-crf',
           String(crf),
+          // -threads 1 in the crop/fit paths. With MT pthread workers active
+          // for decode + filter graph, layering libx264's own internal slice/
+          // lookahead threads on top can deadlock when the filter graph has
+          // parallel branches (filter_complex with split/overlay). Single-
+          // threaded x264 sidesteps the deadlock; the rest of the wasm stays
+          // multi-threaded so decode + filters still benefit from MT.
+          '-threads',
+          '1',
           '-movflags',
           '+faststart',
           outputName,
@@ -575,6 +646,16 @@ export async function cropEncodeVideo(
           '-i',
           inputName,
           ...trimArgs,
+          // Serialize the filter graph. Solid backdrop works because it uses
+          // a single linear -vf chain; blur backdrop uses filter_complex with
+          // parallel split → bg/fg branches → overlay, and ffmpeg-wasm's MT
+          // pthread layer deadlocks during the parallel-branch synchronization.
+          // Single-threaded filter processing avoids the deadlock; decode +
+          // encode still run multi-threaded so MT's value is preserved.
+          '-filter_threads',
+          '1',
+          '-filter_complex_threads',
+          '1',
           '-filter_complex',
           fitFilter,
           '-map',
@@ -584,9 +665,17 @@ export async function cropEncodeVideo(
           '-c:v',
           'libx264',
           '-preset',
-          'veryfast',
+          'superfast',
           '-crf',
           String(crf),
+          // -threads 1 in the crop/fit paths. With MT pthread workers active
+          // for decode + filter graph, layering libx264's own internal slice/
+          // lookahead threads on top can deadlock when the filter graph has
+          // parallel branches (filter_complex with split/overlay). Single-
+          // threaded x264 sidesteps the deadlock; the rest of the wasm stays
+          // multi-threaded so decode + filters still benefit from MT.
+          '-threads',
+          '1',
           '-movflags',
           '+faststart',
           outputName,
@@ -600,13 +689,21 @@ export async function cropEncodeVideo(
           inputName,
           ...trimArgs,
           '-vf',
-          `crop=${iw}:${ih}:${ix}:${iy},scale=${ow}:${oh}`,
+          `crop=${iw}:${ih}:${ix}:${iy},scale=${ow}:${oh},format=yuv420p`,
           '-c:v',
           'libx264',
           '-preset',
-          'veryfast',
+          'superfast',
           '-crf',
           String(crf),
+          // -threads 1 in the crop/fit paths. With MT pthread workers active
+          // for decode + filter graph, layering libx264's own internal slice/
+          // lookahead threads on top can deadlock when the filter graph has
+          // parallel branches (filter_complex with split/overlay). Single-
+          // threaded x264 sidesteps the deadlock; the rest of the wasm stays
+          // multi-threaded so decode + filters still benefit from MT.
+          '-threads',
+          '1',
           '-movflags',
           '+faststart',
           outputName,
@@ -639,8 +736,12 @@ export type CompressProgress = {
   lastSizeBytes?: number
 }
 
-const MAX_COMPRESS_PASSES = 3
-const COMPRESS_TOLERANCE = 0.08
+// Each pass is a full re-encode. 2 passes with a looser ±15% tolerance is the
+// sweet spot for ffmpeg-wasm: average run lands in 1 pass and worst-case lands
+// in 2, instead of always paying for 3. Users sharing to social platforms care
+// about "small enough", not "exactly this many bytes".
+const MAX_COMPRESS_PASSES = 2
+const COMPRESS_TOLERANCE = 0.15
 
 function estimateInitialCrf(targetBytes: number, durationSec: number): number {
   const audioBps = 128_000
@@ -707,12 +808,25 @@ export async function compressVideoToTargetSize(
             '-i',
             inputName,
             ...trimArgs,
+            // Cap long edge at 1920 and force 8-bit yuv420p. 4K 10-bit inputs
+            // OOM the wasm heap during decode otherwise (20MB+ per frame), and
+            // Compress's goal is hitting a target size for sharing — 4K isn't
+            // useful at sub-10MB anyway. Standard 1080p content passes through
+            // unchanged because its long edge already equals 1920.
+            '-vf',
+            "scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p",
             '-c:v',
             'libx264',
+            // ultrafast is ~2-3× faster than veryfast in wasm-x264; the ~25%
+            // size penalty at a given CRF is absorbed by the CRF iteration
+            // loop landing on the target. Net result: way less wall time per
+            // pass without measurably worse output for sharing scenarios.
             '-preset',
-            'veryfast',
+            'ultrafast',
             '-crf',
             String(crfRounded),
+            '-threads',
+            '2',
             '-movflags',
             '+faststart',
             outputName,

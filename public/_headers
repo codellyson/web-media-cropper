@@ -1,0 +1,29 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: interest-cohort=()
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/workbox-*.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/manifest.webmanifest
+  Cache-Control: public, max-age=3600
+
+# Cross-origin isolation for the studio routes only. Enables SharedArrayBuffer
+# so ffmpeg-wasm loads its multi-threaded core (3–5× faster x264 encodes).
+# Scoped narrowly — the landing at / keeps GA + Google Fonts working as-is.
+# The wasm fetch goes to assets.kreativekorna.com, which must serve those
+# files with `Cross-Origin-Resource-Policy: cross-origin` for COEP to allow it.
+/studio
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+
+/studio/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
