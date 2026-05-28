@@ -13,6 +13,14 @@ dist-ssr
 .wrangler
 *.local
 
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# TypeScript build cache
+*.tsbuildinfo
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -42,7 +42,7 @@ export function CustomSizeInput({ onApply }: CustomSizeInputProps) {
       <div>
         <label
           htmlFor="custom-dims-input"
-          className="mb-1.5 block px-2.5 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[var(--ic-ink-4)]"
+          className="mb-1.5 block px-2.5 text-[13px] font-semibold text-[var(--ic-ink)]"
         >
           Custom dimensions
         </label>
@@ -71,18 +71,18 @@ export function CustomSizeInput({ onApply }: CustomSizeInputProps) {
             Apply
           </button>
         </form>
-        <p className="mt-1.5 h-4 px-2.5 font-mono-geist text-[10.5px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)]">
+        <p className="mt-1.5 h-4 px-2.5 text-[11px] text-[var(--ic-ink-4)]">
           {parsed
             ? `${parsed.width} × ${parsed.height}`
             : raw
-              ? 'enter two numbers or a ratio'
+              ? 'Enter two numbers or a ratio.'
               : ''}
         </p>
       </div>
 
       {recent.length > 0 && (
         <div>
-          <p className="mb-1.5 px-2.5 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[var(--ic-ink-4)]">
+          <p className="mb-1.5 px-2.5 text-[13px] font-semibold text-[var(--ic-ink)]">
             Recent
           </p>
           <div className="flex flex-wrap gap-1 px-0.5">

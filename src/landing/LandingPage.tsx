@@ -1,18 +1,15 @@
-import { Link, useParams } from 'react-router-dom'
-import { Head } from 'vite-react-ssg'
+import Link from 'next/link'
 import { marked } from 'marked'
 import { LANDINGS, type Landing } from '@/content/landings'
 import { NavBar } from '@/components/NavBar'
 
-const SITE_URL =
-  (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SITE_URL as string | undefined)) ||
-  'https://wmc.kreativekorna.com'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://wmc.kreativekorna.com'
 
 function md(input: string): string {
   return marked.parse(input, { async: false }) as string
 }
 
-function jsonLdFaq(landing: Landing): string {
+export function jsonLdFaq(landing: Landing): string {
   if (!landing.faq?.length) return ''
   const data = {
     '@context': 'https://schema.org',
@@ -29,10 +26,16 @@ function jsonLdFaq(landing: Landing): string {
   return JSON.stringify(data)
 }
 
-export function LandingPage({ slug: slugProp }: { slug?: string }) {
-  const params = useParams<{ slug: string }>()
-  const slug = slugProp ?? params.slug
-  const landing = LANDINGS.find((l) => l.slug === slug)
+export function landingBySlug(slug: string): Landing | undefined {
+  return LANDINGS.find((l) => l.slug === slug)
+}
+
+export function landingCanonical(slug: string): string {
+  return `${SITE_URL}/${slug}/`
+}
+
+export function LandingPage({ slug }: { slug: string }) {
+  const landing = landingBySlug(slug)
 
   if (!landing) {
     return (
@@ -41,35 +44,23 @@ export function LandingPage({ slug: slugProp }: { slug?: string }) {
         <p className="mt-2 text-[var(--ic-ink-3)]">
           The landing <code>{slug}</code> doesn't exist.
         </p>
-        <Link to="/" className="mt-6 inline-block text-[var(--ic-accent)] underline">
+        <Link href="/" className="mt-6 inline-block text-[var(--ic-accent)] underline">
           Back to home
         </Link>
       </main>
     )
   }
 
-  const canonical = `${SITE_URL}/${landing.slug}/`
   const ctaHref = `/studio?preset=${landing.ctaPresetId}`
 
   return (
     <>
-      <Head>
-        <title>{landing.title}</title>
-        <meta name="description" content={landing.metaDescription} />
-        <link rel="canonical" href={canonical} />
-        <meta property="og:type" content="article" />
-        <meta property="og:title" content={landing.title} />
-        <meta property="og:description" content={landing.metaDescription} />
-        <meta property="og:url" content={canonical} />
-        <meta property="og:image" content={`${SITE_URL}/og.png`} />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={landing.title} />
-        <meta name="twitter:description" content={landing.metaDescription} />
-        <meta name="twitter:image" content={`${SITE_URL}/og.png`} />
-        {landing.faq?.length ? (
-          <script type="application/ld+json">{jsonLdFaq(landing)}</script>
-        ) : null}
-      </Head>
+      {landing.faq?.length ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLdFaq(landing) }}
+        />
+      ) : null}
 
       <div className="flex min-h-dvh flex-col bg-background text-foreground">
         <NavBar />
@@ -82,7 +73,7 @@ export function LandingPage({ slug: slugProp }: { slug?: string }) {
 
           <div className="mt-8">
             <Link
-              to={ctaHref}
+              href={ctaHref}
               className="inline-flex items-center gap-2 rounded-xl bg-[var(--ic-accent)] px-5 py-3 text-[14px] font-semibold text-white transition hover:brightness-110"
               style={{ boxShadow: '0 4px 14px var(--ic-accent-glow)' }}
             >
@@ -130,7 +121,7 @@ export function LandingPage({ slug: slugProp }: { slug?: string }) {
               Runs entirely in your browser. No upload, no tracking.
             </span>
             <Link
-              to="/"
+              href="/"
               className="font-mono-geist text-[11px] uppercase tracking-[0.14em] text-[var(--ic-ink-4)] transition hover:text-[var(--ic-ink-2)]"
             >
               WMC · 2026

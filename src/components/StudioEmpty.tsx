@@ -1,6 +1,7 @@
+'use client'
+
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Head } from 'vite-react-ssg'
+import Link from 'next/link'
 import { NavBar } from '@/components/NavBar'
 
 type StudioEmptyProps = {
@@ -44,14 +45,6 @@ export function StudioEmpty({ onFile, onBlob, loading, error }: StudioEmptyProps
 
   return (
     <div className="flex min-h-dvh flex-col bg-[var(--ic-bg)] text-[var(--ic-ink)]">
-      <Head>
-        <title>Studio · WMC</title>
-        <meta
-          name="description"
-          content="Subject-aware multi-platform crop. Drop a file to start. In your browser, no upload."
-        />
-        <meta name="robots" content="noindex" />
-      </Head>
       <NavBar />
 
       <input
@@ -85,9 +78,9 @@ export function StudioEmpty({ onFile, onBlob, loading, error }: StudioEmptyProps
           }}
         >
           <div className="w-full max-w-[560px] px-6 text-center">
-            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--ic-line)] bg-[var(--ic-bg)] px-3 py-1 font-mono-geist text-[10.5px] uppercase tracking-[0.14em] text-[var(--ic-ink-3)]">
+            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--ic-line)] bg-[var(--ic-bg)] px-3 py-1 text-[12px] font-medium text-[var(--ic-ink-3)]">
               <span className="block h-1.5 w-1.5 rounded-full bg-[var(--ic-accent)]" />
-              Studio · ready
+              Studio ready
             </span>
 
             <div
@@ -120,19 +113,19 @@ export function StudioEmpty({ onFile, onBlob, loading, error }: StudioEmptyProps
             <p className="mx-auto mt-3 max-w-[420px] text-[14px] leading-[1.55] text-[var(--ic-ink-2)]">
               HEIC, AVIF, WebP, PNG, JPG, MP4, MOV. Up to 4K.
             </p>
-            <p className="mt-3 font-mono-geist text-[11px] uppercase tracking-[0.14em] text-[var(--ic-ink-4)]">
-              {loading ? 'decoding…' : 'click anywhere · drag · paste ⌘V'}
+            <p className="mt-3 text-[12px] text-[var(--ic-ink-4)]">
+              {loading ? 'Decoding…' : 'Click anywhere, drag a file, or paste with ⌘V.'}
             </p>
 
             {error && <p className="mt-4 text-[12px] text-red-500">{error}</p>}
 
-            <div className="mt-7 flex flex-wrap items-center justify-center gap-3 font-mono-geist text-[11px] uppercase tracking-[0.12em] text-[var(--ic-ink-4)]">
+            <div className="mt-7 flex flex-wrap items-center justify-center gap-3 text-[13px] text-[var(--ic-ink-3)]">
               <Link
-                to="/"
+                href="/"
                 onClick={(e) => e.stopPropagation()}
-                className="transition hover:text-[var(--ic-ink-2)]"
+                className="transition hover:text-[var(--ic-ink)]"
               >
-                ← see how it works
+                ← See how it works
               </Link>
               <span
                 aria-hidden
@@ -140,11 +133,11 @@ export function StudioEmpty({ onFile, onBlob, loading, error }: StudioEmptyProps
                 style={{ opacity: 0.6 }}
               />
               <Link
-                to="/batch"
+                href="/batch"
                 onClick={(e) => e.stopPropagation()}
-                className="transition hover:text-[var(--ic-ink-2)]"
+                className="transition hover:text-[var(--ic-ink)]"
               >
-                batch many files
+                Batch many files
               </Link>
             </div>
           </div>

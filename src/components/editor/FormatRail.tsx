@@ -74,7 +74,7 @@ export function FormatRail({ value, onSelect }: FormatRailProps) {
         if (!items.length) return null
         return (
           <div key={group.id} className="flex flex-col gap-1">
-            <div className="px-2.5 pb-1 font-mono-geist text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[var(--ic-ink-4)]">
+            <div className="px-0.5 pb-0.5 text-[13px] font-semibold text-[var(--ic-ink)]">
               {group.label}
             </div>
             {items.map(({ preset, display }) => {

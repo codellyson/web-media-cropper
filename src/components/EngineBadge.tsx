@@ -5,7 +5,7 @@ import { useEngineStatus } from '@/hooks/useEngineStatus'
 // without having to crack open devtools and inspect getEngineStatus().
 export function EngineBadge() {
   const status = useEngineStatus()
-  if (!import.meta.env.DEV) return null
+  if (process.env.NODE_ENV !== 'development') return null
   if (status.kind === 'idle') return null
 
   const { color, label } = render(status)
